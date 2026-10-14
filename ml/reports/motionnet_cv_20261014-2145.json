@@ -1,0 +1,196 @@
+{
+ "sources": [
+  "synthetic(4 subjects) - code-path check only"
+ ],
+ "classes": [
+  "flexion",
+  "abduction",
+  "external_rotation",
+  "internal_rotation",
+  "pendulum",
+  "unknown"
+ ],
+ "cv": {
+  "skeleton": {
+   "n": 8496,
+   "accuracy": 0.5454,
+   "macro_f1": 0.5707,
+   "unknown_rejection": 1.0,
+   "known_false_reject": 0.4725,
+   "confusion": [
+    [
+     898,
+     0,
+     0,
+     0,
+     0,
+     374
+    ],
+    [
+     0,
+     708,
+     0,
+     0,
+     0,
+     1000
+    ],
+    [
+     0,
+     0,
+     705,
+     0,
+     0,
+     1077
+    ],
+    [
+     0,
+     0,
+     18,
+     288,
+     0,
+     1391
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     1675,
+     2
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     360
+    ]
+   ],
+   "phase_frame_acc": 0.5156,
+   "form_sensitivity": 0.3162,
+   "form_specificity": 0.909
+  },
+  "imu": {
+   "n": 8750,
+   "accuracy": 0.2442,
+   "macro_f1": 0.2269,
+   "unknown_rejection": 0.9865,
+   "known_false_reject": 0.6101,
+   "confusion": [
+    [
+     441,
+     0,
+     0,
+     0,
+     44,
+     830
+    ],
+    [
+     47,
+     204,
+     0,
+     0,
+     0,
+     1505
+    ],
+    [
+     0,
+     0,
+     0,
+     1291,
+     0,
+     540
+    ],
+    [
+     0,
+     0,
+     114,
+     1126,
+     0,
+     511
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     1726
+    ],
+    [
+     5,
+     0,
+     0,
+     0,
+     0,
+     366
+    ]
+   ],
+   "phase_frame_acc": 0.4707,
+   "form_sensitivity": 0.0291,
+   "form_specificity": 0.9769
+  },
+  "fused": {
+   "n": 8496,
+   "accuracy": 0.914,
+   "macro_f1": 0.8689,
+   "unknown_rejection": 0.8694,
+   "known_false_reject": 0.0747,
+   "confusion": [
+    [
+     1141,
+     0,
+     0,
+     0,
+     0,
+     131
+    ],
+    [
+     0,
+     1231,
+     0,
+     0,
+     0,
+     477
+    ],
+    [
+     0,
+     0,
+     1754,
+     28,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     48,
+     1649,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     1677,
+     0
+    ],
+    [
+     18,
+     24,
+     5,
+     0,
+     0,
+     313
+    ]
+   ],
+   "phase_frame_acc": 0.5801,
+   "form_sensitivity": 0.2166,
+   "form_specificity": 0.999
+  },
+  "protocol": "group_2fold"
+ }
+}

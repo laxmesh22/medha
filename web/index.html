@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Physio Buddy clinic station: live shoulder range-of-motion measurement and exercise coaching." />
+    <meta name="theme-color" content="#0b0f14" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Physio Buddy Station</title>
+  </head>
+  <body>
+    <a class="skip" href="#stage">Skip to live view</a>
+    <div class="grain" aria-hidden="true"></div>
+
+    <header class="top">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 20c3-7 11-10 15-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="9" cy="20" r="2.6" fill="currentColor"/></svg>
+        <div><strong>Physio Buddy</strong><span>Clinic station</span></div>
+      </div>
+
+      <nav class="session" aria-label="Session">
+        <div class="seg" role="group" aria-label="Exercise" id="exercise-seg">
+          <button data-ex="flexion" class="on">Forward raise</button>
+          <button data-ex="abduction">Side raise</button>
+          <button data-ex="external_rotation">Outward rotation</button>
+        </div>
+        <div class="seg small" role="group" aria-label="Affected shoulder">
+          <button data-side="right" class="on">Right</button>
+          <button data-side="left">Left</button>
+        </div>
+        <label class="field">Patient
+          <select id="model">
+            <option value="female">Female</option>
+            <option value="male">Male</option>
+            <option value="mannequin">Mannequin</option>
+          </select>
+        </label>
+        <button id="rest-btn" class="btn-quiet">Calibrate rest</button>
+        <button id="auto-btn" class="btn-quiet" aria-pressed="false" hidden>Auto-detect</button>
+        <button id="rec-btn" class="btn-quiet" aria-expanded="false" aria-controls="rec-drawer">Record dataset</button>
+      </nav>
+
+      <div class="status" role="status">
+        <span id="conn" class="conn off"><i></i><b>Offline</b></span>
+        <span id="fps" class="fps"></span>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section id="stage" class="stage" aria-label="Live 3D view">
+        <div id="scene"></div>
+        <div id="loading" class="loading"><div class="bar"><i id="load-bar"></i></div><span id="load-text">Loading patient model</span></div>
+
+        <div class="stage-top">
+          <div id="guidance" class="guide" data-ok="no">Connecting to station</div>
+          <div id="verdict" class="verdict" data-form="idle">
+            <span class="v-k">Form</span><span class="v-t" id="verdict-text">Waiting</span>
+            <span class="v-r" id="verdict-reason"></span>
+          </div>
+        </div>
+
+        <div id="explain" class="explain" hidden>
+          <p><span>Working</span><b id="working">resting</b></p>
+          <p><span>Stretching</span><b id="stretching">nothing yet</b></p>
+        </div>
+
+        <div class="stage-tools">
+          <div class="seg glass" role="group" aria-label="View">
+            <button data-view="avatar" class="on">Patient</button>
+            <button data-view="xray">X-ray</button>
+            <button data-view="anatomy">Anatomy</button>
+            <button data-view="points">Camera points</button>
+          </div>
+          <div id="layers" class="layers" hidden>
+            <label><input type="checkbox" data-layer="skin" /> Skin</label>
+            <label><input type="checkbox" data-layer="muscles" checked /> Muscles</label>
+            <label><input type="checkbox" data-layer="bones" checked /> Bones</label>
+            <label><input type="checkbox" data-layer="joints" checked /> Capsule</label>
+          </div>
+          <label class="check"><input type="checkbox" id="mirror" checked /> Mirror</label>
+          <span id="credit" class="credit"></span>
+        </div>
+      </section>
+
+      <aside class="rail" aria-label="Live coaching">
+        <section class="readout" aria-live="polite">
+          <header>
+            <div><h2 id="ex-name">Forward raise</h2><p id="movement">Waiting for patient</p></div>
+            <div class="count"><b id="rep-count">0</b><span><em id="correct-count">0</em> correct</span></div>
+          </header>
+          <div class="angle"><span id="elev">--</span><small id="elev-note">True elevation, arm against trunk</small></div>
+          <div class="meter" aria-hidden="true"><i id="progress-bar"></i></div>
+          <div class="target"><label for="target">Target</label><input type="range" id="target" min="30" max="180" step="5" value="120" /><output id="target-val">120°</output></div>
+          <ol id="phase" class="phase">
+            <li data-phase="rest">Rest</li><li data-phase="raising">Raise</li>
+            <li data-phase="hold">Hold <b id="hold-t"></b></li><li data-phase="lowering">Lower</li>
+          </ol>
+        </section>
+
+        <section class="agent" aria-label="Voice coach">
+          <header>
+            <div class="orb" id="orb" data-state="idle" aria-hidden="true"><i></i><i></i><i></i></div>
+            <div><h3>Voice coach</h3><p id="agent-state">Text only</p></div>
+            <div class="agent-btns">
+              <button id="voice-btn" class="toggle" aria-pressed="false">Speak</button>
+              <button id="mic-btn" class="toggle" aria-pressed="false">Listen</button>
+            </div>
+          </header>
+          <ul id="transcript" class="transcript"></ul>
+          <div class="asks" aria-label="Try asking">
+            <button data-ask="how am I doing">How am I doing?</button>
+            <button data-ask="how many reps">Reps?</button>
+            <button data-ask="what muscles are working">Muscles?</button>
+            <button data-ask="next exercise">Next exercise</button>
+          </div>
+        </section>
+
+        <section class="vision" aria-label="What the camera model sees">
+          <header><h3>Vision</h3><span id="model-name">pose model</span><button id="video-btn" class="btn-quiet" hidden>Show video</button></header>
+          <div class="vision-wrap"><img id="video" alt="Live camera image with tracked skeleton" hidden /><canvas id="vision"></canvas></div>
+        </section>
+      </aside>
+
+      <section class="lower" aria-label="Session data">
+        <div class="chart-box">
+          <header><h3>Angle over time</h3><span id="best"></span></header>
+          <canvas id="chart"></canvas>
+          <ol id="rep-strip" class="rep-strip" aria-label="Reps this session"></ol>
+        </div>
+        <div class="metrics">
+          <h3>Measurements</h3>
+          <dl>
+            <div class="metric" data-key="apparent_elevation"><dt>Apparent elevation</dt><dd class="val">--</dd><dd class="note"></dd></div>
+            <div class="metric" data-key="plane_of_elevation"><dt>Plane of movement</dt><dd class="val">--</dd><dd class="note"></dd></div>
+            <div class="metric" data-key="rotation"><dt>Rotation, out + / in −</dt><dd class="val">--</dd><dd class="note"></dd></div>
+            <div class="metric" data-key="elbow_flexion"><dt>Elbow bend</dt><dd class="val">--</dd><dd class="note"></dd></div>
+            <div class="metric" data-key="trunk_lean_sagittal"><dt>Trunk lean, front/back</dt><dd class="val">--</dd><dd class="note"></dd></div>
+            <div class="metric" data-key="trunk_lean_lateral"><dt>Trunk lean, sideways</dt><dd class="val">--</dd><dd class="note"></dd></div>
+          </dl>
+          <div id="flags" class="flags"></div>
+          <p class="disclaimer">Prototype. Not a medical device. Values are engineering estimates; exercise limits are set by a physiotherapist.</p>
+        </div>
+      </section>
+    </main>
+
+    <aside id="rec-drawer" class="rec-drawer" aria-label="Dataset recording" hidden>
+      <header><h3>Record dataset</h3><button id="rec-close" class="btn-quiet">Close</button></header>
+      <form id="rec-form" class="rec-form">
+        <label class="field">Volunteer ID <input id="rec-subject" required maxlength="16" pattern="[A-Za-z0-9_\-]+" placeholder="S01" /></label>
+        <label class="field">Protocol
+          <select id="rec-protocol"><option value="full">Full (about 25 min)</option><option value="quick">Quick (about 8 min)</option></select>
+        </label>
+        <label class="check"><input type="checkbox" id="rec-consent" required /> Written consent signed (keypoints only, no video)</label>
+        <p class="rec-note">Uses the affected side selected above. Turn on Speak so the volunteer hears each block.</p>
+        <button type="submit" class="toggle">Start recording</button>
+      </form>
+      <div id="rec-live" class="rec-live" hidden>
+        <p class="rec-k" id="rec-progress"></p>
+        <p class="rec-t" id="rec-title">Rest calibration</p>
+        <p class="rec-p" id="rec-prompt"></p>
+        <p class="rec-n" id="rec-count"></p>
+        <div class="rec-btns">
+          <button id="rec-prev" class="btn-quiet">Redo previous</button>
+          <button id="rec-next" class="btn-quiet">Next block</button>
+          <button id="rec-stop" class="toggle">Stop</button>
+        </div>
+        <p class="rec-note" id="rec-dir"></p>
+      </div>
+    </aside>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hub-sim",
+      "runtimeExecutable": "D:/medha/hub/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "physiobuddy_hub", "run", "--sim", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "hub-sim-scratch",
+      "runtimeExecutable": "D:/medha/hub/.venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "physiobuddy_hub", "run", "--sim", "--port", "8001",
+                      "--dataset-dir", "C:/Users/laxme/AppData/Local/Temp/claude/D--medha/24fcde3e-1efc-406b-9483-754aacab6f6d/scratchpad/rec_test"],
+      "port": 8001
+    }
+  ]
+}

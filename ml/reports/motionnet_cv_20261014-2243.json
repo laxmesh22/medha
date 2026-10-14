@@ -1,0 +1,202 @@
+{
+ "sources": [
+  "synthetic(4 subjects) - code-path check only"
+ ],
+ "classes": [
+  "flexion",
+  "abduction",
+  "external_rotation",
+  "internal_rotation",
+  "pendulum",
+  "unknown"
+ ],
+ "cv": {
+  "skeleton": {
+   "n": 2795,
+   "accuracy": 0.1886,
+   "macro_f1": 0.0999,
+   "unknown_rejection": 0.0,
+   "known_false_reject": 0.0523,
+   "confusion": [
+    [
+     0,
+     96,
+     0,
+     0,
+     242,
+     108
+    ],
+    [
+     0,
+     242,
+     0,
+     0,
+     284,
+     32
+    ],
+    [
+     0,
+     84,
+     0,
+     0,
+     480,
+     0
+    ],
+    [
+     0,
+     39,
+     0,
+     0,
+     517,
+     0
+    ],
+    [
+     0,
+     269,
+     0,
+     0,
+     285,
+     0
+    ],
+    [
+     0,
+     32,
+     0,
+     0,
+     85,
+     0
+    ]
+   ],
+   "phase_frame_acc": 0.4597,
+   "form_sensitivity": 0.0,
+   "form_specificity": 1.0
+  },
+  "imu": {
+   "n": 2795,
+   "accuracy": 0.1735,
+   "macro_f1": 0.0585,
+   "unknown_rejection": 0.0598,
+   "known_false_reject": 0.0549,
+   "confusion": [
+    [
+     0,
+     0,
+     0,
+     0,
+     375,
+     71
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     558,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     564,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     556,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     478,
+     76
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     110,
+     7
+    ]
+   ],
+   "phase_frame_acc": 0.4647,
+   "form_sensitivity": 0.0,
+   "form_specificity": 1.0
+  },
+  "fused": {
+   "n": 2795,
+   "accuracy": 0.2018,
+   "macro_f1": 0.1101,
+   "unknown_rejection": 0.0855,
+   "known_false_reject": 0.096,
+   "confusion": [
+    [
+     0,
+     127,
+     0,
+     0,
+     209,
+     110
+    ],
+    [
+     0,
+     269,
+     0,
+     0,
+     142,
+     147
+    ],
+    [
+     0,
+     275,
+     0,
+     0,
+     289,
+     0
+    ],
+    [
+     0,
+     275,
+     0,
+     0,
+     281,
+     0
+    ],
+    [
+     0,
+     269,
+     0,
+     0,
+     285,
+     0
+    ],
+    [
+     0,
+     33,
+     0,
+     0,
+     74,
+     10
+    ]
+   ],
+   "phase_frame_acc": 0.4638,
+   "form_sensitivity": 0.0,
+   "form_specificity": 1.0
+  },
+  "protocol": "group_2fold",
+  "scored": "original windows of held-out subjects; unknown cutoff tuned on held-out calibration subjects"
+ },
+ "limitations": [
+  "Skeleton branch has never seen a RealSense + RTMPose skeleton (public Kinect / motion-capture only). Results do not describe the Clinic Station until validated on team recordings.",
+  "Camera + strap together was not measured on real people: no source records both. Needs team recordings with the straps worn.",
+  "Strap branch trained only on a wrist-worn Apple Watch (SPAR). It does not transfer to BNO085 straps on the arm, forearm and chest; the hub ignores strap input until validated."
+ ]
+}

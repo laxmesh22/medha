@@ -1,0 +1,372 @@
+{
+ "sources": [
+  "synthetic(4 subjects) - code-path check only"
+ ],
+ "protocol": "GroupKFold(2) by subject",
+ "synthetic": true,
+ "rows": {
+  "Rules only (geometry + thresholds)": {
+   "n": 2795,
+   "accuracy": 0.668,
+   "macro_f1": 0.6137,
+   "unknown_rejection": 0.7607,
+   "known_false_reject": 0.028,
+   "confusion": [
+    [
+     432,
+     0,
+     0,
+     0,
+     0,
+     14
+    ],
+    [
+     0,
+     544,
+     0,
+     0,
+     0,
+     14
+    ],
+    [
+     0,
+     133,
+     407,
+     0,
+     0,
+     24
+    ],
+    [
+     0,
+     138,
+     0,
+     395,
+     0,
+     23
+    ],
+    [
+     554,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     28,
+     0,
+     0,
+     0,
+     89
+    ]
+   ],
+   "form_sensitivity": 0.195,
+   "form_specificity": 0.728
+  },
+  "Lee 2024 MLP, IMU, random 80:20": {
+   "accuracy": 0.8,
+   "macro_f1": 0.7889,
+   "n": 72
+  },
+  "Lee 2024 MLP, IMU, LOSO": {
+   "accuracy": 0.6944,
+   "macro_f1": 0.6797,
+   "n": 72
+  },
+  "Random forest (Sassi-style), skeleton": {
+   "n": 2795,
+   "accuracy": 0.9928,
+   "macro_f1": 0.9817,
+   "unknown_rejection": 0.8718,
+   "known_false_reject": 0.0019,
+   "confusion": [
+    [
+     442,
+     0,
+     0,
+     0,
+     0,
+     4
+    ],
+    [
+     0,
+     557,
+     0,
+     0,
+     0,
+     1
+    ],
+    [
+     0,
+     0,
+     564,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     556,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     554,
+     0
+    ],
+    [
+     8,
+     4,
+     0,
+     3,
+     0,
+     102
+    ]
+   ]
+  },
+  "Random forest (Sassi-style), imu": {
+   "n": 2795,
+   "accuracy": 0.6587,
+   "macro_f1": 0.6405,
+   "unknown_rejection": 0.4872,
+   "known_false_reject": 0.0071,
+   "confusion": [
+    [
+     427,
+     0,
+     0,
+     0,
+     1,
+     18
+    ],
+    [
+     355,
+     190,
+     0,
+     0,
+     12,
+     1
+    ],
+    [
+     0,
+     0,
+     282,
+     282,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     225,
+     331,
+     0,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     554,
+     0
+    ],
+    [
+     60,
+     0,
+     0,
+     0,
+     0,
+     57
+    ]
+   ]
+  },
+  "PB-MotionNet, skeleton": {
+   "n": 2795,
+   "accuracy": 0.3116,
+   "macro_f1": 0.2351,
+   "unknown_rejection": 0.547,
+   "known_false_reject": 0.351,
+   "confusion": [
+    [
+     66,
+     79,
+     0,
+     0,
+     192,
+     109
+    ],
+    [
+     0,
+     225,
+     0,
+     0,
+     130,
+     203
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     275,
+     289
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     255,
+     301
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     516,
+     38
+    ],
+    [
+     0,
+     19,
+     0,
+     0,
+     34,
+     64
+    ]
+   ],
+   "phase_frame_acc": 0.4065,
+   "form_sensitivity": 0.0,
+   "form_specificity": 1.0
+  },
+  "PB-MotionNet, imu": {
+   "n": 2795,
+   "accuracy": 0.3166,
+   "macro_f1": 0.1878,
+   "unknown_rejection": 0.0342,
+   "known_false_reject": 0.0534,
+   "confusion": [
+    [
+     0,
+     31,
+     0,
+     172,
+     131,
+     112
+    ],
+    [
+     0,
+     79,
+     0,
+     270,
+     209,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     289,
+     275,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     281,
+     275,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     2,
+     521,
+     31
+    ],
+    [
+     0,
+     2,
+     0,
+     29,
+     82,
+     4
+    ]
+   ],
+   "phase_frame_acc": 0.4663,
+   "form_sensitivity": 0.0,
+   "form_specificity": 1.0
+  },
+  "PB-MotionNet, fused": {
+   "n": 2795,
+   "accuracy": 0.3564,
+   "macro_f1": 0.2808,
+   "unknown_rejection": 0.5043,
+   "known_false_reject": 0.3279,
+   "confusion": [
+    [
+     168,
+     63,
+     0,
+     0,
+     113,
+     102
+    ],
+    [
+     96,
+     215,
+     0,
+     0,
+     41,
+     206
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     275,
+     289
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     275,
+     281
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     554,
+     0
+    ],
+    [
+     6,
+     18,
+     0,
+     0,
+     34,
+     59
+    ]
+   ],
+   "phase_frame_acc": 0.4413,
+   "form_sensitivity": 0.0,
+   "form_specificity": 1.0
+  }
+ }
+}

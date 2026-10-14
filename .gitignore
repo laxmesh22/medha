@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Node / build output
+node_modules/
+hub/physiobuddy_hub/api/static/
+
+# Models (downloaded with `python -m physiobuddy_hub fetch-models`; copy to Jetson manually)
+hub/models/
+*.onnx
+*.engine
+
+# Recordings and session data - contain patient/volunteer data, never commit
+hub/data/
+ml/data/
+*.bag
+
+# Raw downloaded assets (Rocketbox FBX/TGA, BodyParts3D OBJ) - regenerate with tools/
+assets_src/
+
+# Secrets
+.env
+*.env.local

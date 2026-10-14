@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "physiobuddy-hub"
+version = "0.1.0"
+description = "Physio Buddy clinic-station hub: RealSense + pose + kinematics + live API"
+# Jetson JetPack 6 ships Python 3.10 - keep code 3.10-compatible (no StrEnum, typing.Self, tomllib).
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+]
+
+[project.optional-dependencies]
+# Laptop / x86. On Jetson, pyrealsense2 is built from source and onnxruntime-gpu comes from the
+# Jetson wheel index - see docs/setup_jetson.md.
+camera = [
+    "pyrealsense2>=2.55",
+    "opencv-python>=4.8,<5",
+    "rtmlib>=0.0.13",
+    "onnxruntime>=1.17",
+]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+physiobuddy-hub = "physiobuddy_hub.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["physiobuddy_hub*"]
+
+[tool.setuptools.package-data]
+physiobuddy_hub = ["api/static/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
