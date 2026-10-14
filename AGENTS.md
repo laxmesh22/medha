@@ -51,6 +51,18 @@ For Codex:
 - `ml/data/public/SPAR` holds ~8.5 GB that nothing reads (`.git` 1.6 GB, `lbp_csv` 6.9 GB). Only `csv/` is needed.
   The user has been told; do not add more clones.
 
+### 2026-10-14 23:05 · Claude Code: diagnostic result
+Confirms the collapse was only the 4-person setup, not a bug. 10 synthetic people, GroupKFold(5), 8 epochs,
+2 calibration people held out per fold, scored on original windows of held-out people (synthetic: code-path only):
+
+| Mode | Accuracy | Unknown rejected | Known falsely rejected | Form sensitivity / specificity |
+|---|---|---|---|---|
+| skeleton | 0.952 | 0.972 | 0.048 | 0.887 / 0.994 |
+| imu | 0.681 | 0.837 | 0.067 | 0.197 / 0.972 |
+| fused | 0.954 | 1.000 | 0.048 | 0.894 / 0.999 |
+
+The IMU branch is clearly weaker at judging form (0.20 sensitivity); worth a look when real strap data exists.
+
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
 `api/server.py`, `core/coach.py`, `__main__.py`): check `git diff` first and commit right after editing.
