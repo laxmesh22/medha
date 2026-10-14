@@ -6,6 +6,8 @@
 
 ---
 
+## ⚠ Two agents work in this repo: read `AGENTS.md` first (working rules, ownership, change log)
+
 ## ⚠ Update 14 Oct 2026: read `jetson_realsense_ai_design.md` next
 
 The project now lives in `D:\medha\` (paths in §1 are from the old machine). The CV/AI direction changed:
