@@ -63,6 +63,14 @@ Confirms the collapse was only the 4-person setup, not a bug. 10 synthetic peopl
 
 The IMU branch is clearly weaker at judging form (0.20 sensitivity); worth a look when real strap data exists.
 
+### 2026-10-26 · Claude Code: CAD review of `Cobra+Radio+Clip_stls.zip`
+New `tools/cad/`: `stl_report.py` (size, bodies, watertight, volume, PLA grams), `render_stl.py` (Blender 4-view
+render with 10 mm grid), `stl_section.py` (scaled cross-section). The supplied part is a generic walkie-talkie
+belt clip: one watertight body 69.2 x 34.7 x 30.9 mm, ~22 g PLA, 3 mm back plate, 2.8 mm sprung tongue with an
+~8 mm grip gap, and a 40 x 13.7 mm slide-rail lug with latch window. It is not an enclosure for the electronics, and
+a spring clip on a strap lets the IMU rock (handoff §6.3: sensors must be rigid on the segment). Recommendation given
+to the user: keep the slide-rail quick-release idea, not the clip. Raw files stay in `assets_src/cad/` (ignored).
+
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
 `api/server.py`, `core/coach.py`, `__main__.py`): check `git diff` first and commit right after editing.
