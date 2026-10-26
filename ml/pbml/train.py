@@ -15,10 +15,11 @@ from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import GroupKFold, LeaveOneGroupOut
 
 from . import augment
+from . import straps as straps_mod
 from .datasets.common import SkeletonSequence
 from .features_multimodal import (
-    CLASSES, COMP_FLAGS, D_IMU, D_IN, D_SKEL, FPS, PHASES, STRIDE, WINDOW, Sample, from_imu_segment,
-    from_skeleton_sequence,
+    CLASSES, COMP_FLAGS, D_IMU, D_IN, D_SKEL, FEATURE_VERSION, FPS, IMU_SENSORS, PHASES, STRIDE, WINDOW, Sample,
+    from_imu_segment, from_skeleton_sequence,
 )
 from .motionnet import MotionNet, energy, modality_dropout, multitask_loss, n_params
 
@@ -27,8 +28,10 @@ NO_ROM_AUG = {"unknown", "pendulum"}
 
 
 # ------------------------------------------------------------------------------------------ data
-def augmented_copies(seq: SkeletonSequence, rng, k: int, imu: Optional[tuple] = None) -> list:
-    """``k`` augmented versions of a skeleton sequence; phase labels and paired IMU follow the time warp."""
+def augmented_copies(seq: SkeletonSequence, rng, k: int, straps: bool = False) -> list:
+    """``k`` augmented versions of a skeleton sequence; phase labels follow the time warp. With ``straps`` the
+    virtual straps are re-derived from the augmented motion (after ROM restriction and time warp, before the camera
+    viewpoint / noise), so camera and straps agree in every copy."""
     out = []
     for _ in range(k):
         pts, up = seq.points, seq.up_cam
@@ -38,6 +41,7 @@ def augmented_copies(seq: SkeletonSequence, rng, k: int, imu: Optional[tuple] = 
         n = max(2, int(round(len(pts) * factor)))
         src = np.clip(np.round(np.linspace(0, len(pts) - 1, n)).astype(int), 0, len(pts) - 1)
         pts = augment.time_warp(pts, factor)
+        segs = straps_mod.segments_from_points(pts, seq.side, up) if straps else None
         pts, up = augment.viewpoint(pts, up, float(rng.uniform(-20, 20)), float(rng.uniform(-8, 8)))
         pts = augment.occlude(augment.jitter(pts, rng), rng)
         meta = dict(seq.meta)
@@ -45,22 +49,29 @@ def augmented_copies(seq: SkeletonSequence, rng, k: int, imu: Optional[tuple] = 
             meta["phase"] = np.asarray(meta["phase"])[src]
         s2 = SkeletonSequence(seq.subject, seq.exercise, seq.side, pts, seq.fps, seq.source,
                               seq.name + "~aug", seq.correct, up, meta)
-        imu2 = None
-        if imu is not None:
-            acc, gyro = augment.imu_augment(np.asarray(imu[0])[src], np.asarray(imu[1])[src], rng)
-            imu2 = (acc, gyro)
-        out.append((s2, imu2))
+        out.append((s2, segs))
     return out
 
 
+def _strap_frames(segs, side: str, rng, p_drop: float = 0.1):
+    """Freshly worn + calibrated virtual straps; ``p_drop`` of the time one strap is missing."""
+    if segs is None:
+        return None
+    drop = ()
+    if rng.random() < p_drop:
+        drop = (str(rng.choice(["forearm", "trunk"])),)
+    return straps_mod.strap_frames(segs, side, rng, drop=drop)
+
+
 def samples_from_sequences(items: list, rng, n_aug: int = 2) -> list:
-    """items: SkeletonSequence or (SkeletonSequence, acc, gyro). Returns Samples incl. augmented copies."""
+    """items: SkeletonSequence or (SkeletonSequence, segment orientations from ``straps.segments_from_points``).
+    Returns Samples incl. augmented copies; paired items get virtual strap features."""
     out = []
     for it in items:
-        seq, imu = (it, None) if isinstance(it, SkeletonSequence) else (it[0], (it[1], it[2]))
-        out.append(from_skeleton_sequence(seq, imu=imu))
-        for s2, imu2 in augmented_copies(seq, rng, n_aug, imu):
-            out.append(from_skeleton_sequence(s2, imu=imu2))
+        seq, segs = (it, None) if isinstance(it, SkeletonSequence) else it
+        out.append(from_skeleton_sequence(seq, straps=_strap_frames(segs, seq.side, rng, p_drop=0.0)))
+        for s2, segs2 in augmented_copies(seq, rng, n_aug, straps=segs is not None):
+            out.append(from_skeleton_sequence(s2, straps=_strap_frames(segs2, seq.side, rng)))
     return out
 
 
@@ -326,7 +337,8 @@ def export_onnx(model: MotionNet, out_dir: Path, energy_thr: dict, metrics_: dic
     digest = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
     meta = {
         "model_version": f"pb-motionnet-{time.strftime('%Y%m%d')}-{digest}",
-        "feature_schema": {"fps": FPS, "window": WINDOW, "d_in": D_IN, "d_skel": D_SKEL, "d_imu": D_IMU,
+        "feature_schema": {"version": FEATURE_VERSION, "fps": FPS, "window": WINDOW, "d_in": D_IN, "d_skel": D_SKEL,
+                           "d_imu": D_IMU, "imu_sensors": list(IMU_SENSORS),
                            "classes": list(CLASSES), "phases": list(PHASES), "comp_flags": list(COMP_FLAGS),
                            "definition": "physiobuddy_hub.ml.features"},
         "thresholds": {"energy": energy_thr, "unknown_prob": 0.5, "comp_prob": 0.7, "autodetect_conf": 0.8},

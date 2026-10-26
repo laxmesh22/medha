@@ -128,7 +128,7 @@ def test_runner_validation_must_match_model_version():
     r = MotionNetRunner(fake_predict(), META)
     for _ in range(WINDOW):
         out = r.push(Skeleton3D(points=pts, valid=vis, body_depth_m=2.2), None, "right", UP,
-                     imu={"wrist": (np.array([0, 0, 9.81]), np.zeros(3))})
+                     imu={"gyro": {"forearm": np.zeros(3)}, "up": {"forearm": np.array([0.0, 1.0, 0.0])}})
     assert out["can_veto"] is False and out["mode"] == "skeleton"   # strap input ignored until validated
 
 

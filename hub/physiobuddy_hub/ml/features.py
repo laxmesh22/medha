@@ -3,13 +3,18 @@
 The network *judges* movement (exercise / unknown, phase, form, compensation). Angles shown to the patient
 still come only from ``SkeletonKinematics`` geometry; here they are just inputs.
 
-Per frame (30 Hz), D = 56:
+Per frame (30 Hz), D = 68:
 * skeleton (36): 9 joints relative to mid-shoulder, rotated into the thorax frame (X anterior, Y up,
   Z toward the affected side), divided by shoulder width -> 27; plus 9 kinematic values
   (elevation/180, apparent/180, sin/cos plane, elbow/180, rotation/90, lean_sag/45, lean_lat/45, shrug_delta).
   Left-side patients are mirrored (Z sign), so one model serves both sides.
-* IMU (18): wrist, upper arm, chest x (acc/9.81, gyro/180); zeros for a missing sensor.
-* mask (2): [skeleton valid, IMU valid]. Invalid blocks are zero-filled.
+* straps (30), the device's three BNO085s (upper arm, forearm, trunk/waist), from ``core.strap_kin``:
+  the same 9 kinematic values as the skeleton block but measured by the straps (shrug slot stays 0: the straps
+  cannot see it), then per strap the angular rate in segment axes (/180) and world up in segment axes (unit),
+  then 3 strap-present flags. A missing strap leaves its slots 0 and its flag 0.
+* mask (2): [skeleton valid, straps valid]. Invalid blocks are zero-filled.
+
+FEATURE_VERSION 2 replaced the old wrist/upper-arm/chest raw acc+gyro block (v1), which did not match the device.
 """
 
 from __future__ import annotations
@@ -29,7 +34,8 @@ STRIDE = 16
 CLASSES = ("flexion", "abduction", "external_rotation", "internal_rotation", "pendulum", "unknown")
 PHASES = ("rest", "raising", "hold", "lowering")
 COMP_FLAGS = ("SHRUG", "TRUNK_LEAN", "ELBOW_DRIFT", "TOO_FAST", "SHORT_ROM")
-IMU_SENSORS = ("wrist", "upper_arm", "chest")
+IMU_SENSORS = ("upper_arm", "forearm", "trunk")
+FEATURE_VERSION = 2
 
 # affected-side-first joint order (mirrored for left patients)
 _JOINTS = {
@@ -40,7 +46,7 @@ N_JOINTS = 9
 D_POS = 3 * N_JOINTS
 D_KIN = 9
 D_SKEL = D_POS + D_KIN
-D_IMU = 6 * len(IMU_SENSORS)
+D_IMU = D_KIN + 6 * len(IMU_SENSORS) + len(IMU_SENSORS)
 D_MASK = 2
 D_IN = D_SKEL + D_IMU + D_MASK
 
@@ -74,7 +80,14 @@ def skeleton_features(sk: Optional[Skeleton3D], angles: Optional[dict], side: st
             v = T.R @ (p[j] - origin) / width
             v[2] *= z_sign
             out[3 * k:3 * k + 3] = v
-    kin = out[D_POS:]
+    out[D_POS:] = kin_vector(angles, shrug_baseline)
+    np.clip(out, -5.0, 5.0, out=out)
+    return out, True
+
+
+def kin_vector(angles: Optional[dict], shrug_baseline: Optional[float] = None) -> np.ndarray:
+    """The 9 kinematic values (camera or strap angles dict, ``CameraAngles.to_dict()``); unavailable -> 0."""
+    kin = np.zeros(D_KIN, dtype=np.float32)
     for i, key in enumerate(("elevation", "apparent_elevation")):
         v = _val(angles, key)
         kin[i] = 0.0 if v is None else v / _KIN_SCALE[key]
@@ -87,26 +100,34 @@ def skeleton_features(sk: Optional[Skeleton3D], angles: Optional[dict], side: st
     shrug = _val(angles, "shrug_index")
     if shrug is not None and shrug_baseline:
         kin[8] = (shrug - shrug_baseline) / shrug_baseline
-    np.clip(out, -5.0, 5.0, out=out)
-    return out, True
+    return kin
 
 
-def imu_features(sensors: Optional[dict]) -> tuple:
-    """``sensors``: {name: (acc m/s^2 (3,), gyro deg/s (3,))} for any of IMU_SENSORS -> ((18,), valid)."""
+def imu_features(strap: Optional[dict]) -> tuple:
+    """Strap block for one frame -> ((D_IMU,), valid).
+
+    ``strap`` = {"angles": ``StrapKinematics.compute(...).to_dict()`` or None,
+                 "gyro": {sensor: deg/s in segment axes (3,)}, "up": {sensor: world up in segment axes (3,)}}
+    for any of IMU_SENSORS. A sensor counts as present when its gyro or up vector is finite.
+    """
     out = np.zeros(D_IMU, dtype=np.float32)
-    if not sensors:
+    if not strap:
         return out, False
+    out[:D_KIN] = kin_vector(strap.get("angles"))
     any_ok = False
+    gyro, up = strap.get("gyro") or {}, strap.get("up") or {}
+    base = D_KIN
     for k, name in enumerate(IMU_SENSORS):
-        s = sensors.get(name)
-        if s is None:
-            continue
-        acc, gyro = np.asarray(s[0], float), np.asarray(s[1], float)
-        if not (np.all(np.isfinite(acc)) and np.all(np.isfinite(gyro))):
-            continue
-        out[6 * k:6 * k + 3] = acc / 9.81
-        out[6 * k + 3:6 * k + 6] = gyro / 180.0
-        any_ok = True
+        g, u = gyro.get(name), up.get(name)
+        ok = False
+        if g is not None and np.all(np.isfinite(g)):
+            out[base + 6 * k:base + 6 * k + 3] = np.asarray(g, float) / 180.0
+            ok = True
+        if u is not None and np.all(np.isfinite(u)) and np.linalg.norm(u) > 1e-6:
+            out[base + 6 * k + 3:base + 6 * k + 6] = np.asarray(u, float) / np.linalg.norm(u)
+            ok = True
+        out[base + 6 * len(IMU_SENSORS) + k] = float(ok)
+        any_ok |= ok
     np.clip(out, -10.0, 10.0, out=out)
     return out, any_ok
 

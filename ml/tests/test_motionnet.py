@@ -51,8 +51,8 @@ def test_modality_dropout_only_hides_one_present_modality():
 
 def test_synthetic_paired_sequence_has_both_modalities():
     rng = np.random.default_rng(0)
-    seq, acc, gyro = make_sequence("abduction", "left", rng, subject_params(rng), comp="SHRUG")
-    s = T.samples_from_sequences([(seq, acc, gyro)], rng, n_aug=1)
+    seq, segs = make_sequence("abduction", "left", rng, subject_params(rng), comp="SHRUG")
+    s = T.samples_from_sequences([(seq, segs)], rng, n_aug=1)
     assert len(s) == 2 and all(x.x[:, -2].mean() > 0.9 and x.x[:, -1].mean() > 0.9 for x in s)
     assert s[0].correct == 0 and s[0].comp[0] == 1 and (s[0].phase >= 0).all()
 
@@ -63,6 +63,7 @@ def test_train_export_and_onnx_parity(windows, tmp_path):
     path = T.export_onnx(model, tmp_path, thr, {"note": "test"}, ["synthetic"])
     meta = json.loads((tmp_path / "pb_motionnet.json").read_text())
     assert meta["feature_schema"]["d_in"] == D_IN and set(meta["thresholds"]["energy"]) == {"skeleton", "imu", "fused"}
+    assert meta["feature_schema"]["version"] == 2 and meta["feature_schema"]["imu_sensors"] == ["upper_arm", "forearm", "trunk"]
     sess = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
     x = windows.x[:4]
     onnx_out = sess.run(None, {"x": x})
@@ -159,7 +160,7 @@ def test_real_loader_drops_rejected_attempts_and_validator_gates(windows, tmp_pa
     from pbml.real import load_sessions
 
     rng = np.random.default_rng(3)
-    seq, _, _ = make_sequence("flexion", "right", rng, subject_params(rng), n_reps=3)
+    seq, _ = make_sequence("flexion", "right", rng, subject_params(rng), n_reps=3)
     rec = DatasetRecorder(tmp_path / "real")
     rec.start("V01", "right", consent=True, protocol="quick", session_id="s")
     rec.next()                                            # skip rest calibration
@@ -182,3 +183,18 @@ def test_real_loader_drops_rejected_attempts_and_validator_gates(windows, tmp_pa
     rv = meta["real_validation"]
     assert rv["passed"] is False and rv["model_version"] == meta["model_version"]   # 1 volunteer < 3
     assert rv["n_subjects"] == 1 and rv["imu_passed"] is False
+
+
+def test_virtual_straps_track_the_camera_angles():
+    from pbml import straps as S
+    from pbml.features_multimodal import angle_series, skeleton_sequence_features
+
+    rng = np.random.default_rng(11)
+    seq, segs = make_sequence("abduction", "right", rng, subject_params(rng), comp="TRUNK_LEAN")
+    _, angs = skeleton_sequence_features(seq.points, seq.side, seq.up_cam)
+    w = S.Wearer("right", rng)
+    frames = S.strap_frames(segs, "right", rng, wearer=w, calibration=S.simulate_calibration(w, segs["trunk"][0], rng, 1.0))
+    cam, st = angle_series(angs, "elevation"), angle_series([f["angles"] for f in frames], "elevation")
+    ok = np.isfinite(cam) & np.isfinite(st)
+    assert ok.mean() > 0.9 and np.median(np.abs(cam[ok] - st[ok])) < 6.0
+    assert any("TRUNK_LEAN_LATERAL" in f["angles"]["flags"] for f in frames)

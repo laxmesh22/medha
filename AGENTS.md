@@ -104,6 +104,38 @@ Remotion (`video/src/guide/`: step panels, animated wiring diagram from agenthan
 Regenerate: render the clips, `video/scripts/encode_footage.py --guide`, `tools/audio/make_soundtrack.py --guide 151`,
 then `npx remotion render AssemblyGuide`. Guide stills, footage and the long music bed are git-ignored.
 
+### 2026-10-27 02:30 · Claude Code: strap features v2 (user asked me to do this in ml/)
+The strap branch was trained on one wrist IMU (synthetic + SPAR), but the device has BNO085s on the upper arm,
+forearm and waist, and the faults we judge (trunk lean, elbow drift) happen at the trunk and shoulder. Changes:
+- **New `hub/physiobuddy_hub/core/strap_kin.py`**: quaternions -> `CameraAngles`, with the same thorax frame, formulas,
+  thresholds and flags as `SkeletonKinematics`, so the coach's rule checks work on straps unchanged.
+  `StrapCalibration.from_npose` + `refine_with_forward_raise` (the raise fixes strap rotation about the limb).
+  Shrug is unavailable from straps.
+- **`hub/physiobuddy_hub/ml/features.py`**: `FEATURE_VERSION = 2`. `IMU_SENSORS = (upper_arm, forearm, trunk)`, and
+  `D_IMU` goes 18 -> 30: strap kin values (same 9 as the skeleton block, via new `kin_vector`), per-strap rate and
+  gravity in segment axes, present flags. `D_IN` goes 56 -> 68. `imu_features` now takes
+  `{"angles", "gyro", "up"}`. `motionnet_infer` refuses models whose `feature_schema.version` differs.
+  **Every existing model must be retrained.**
+- **New `ml/pbml/straps.py`**: virtual straps from skeletons (misplacement up to 15 deg, tilt, yaw references, noise,
+  bias), calibrated through the real `StrapCalibration`.
+  - `synth_skeleton.make_sequence` returns `(seq, segs)`, not `(seq, acc, gyro)`.
+  - `from_skeleton_sequence(..., straps=frames)` replaces `imu=`.
+  - `train.augmented_copies` re-derives straps from the augmented motion (the ROM-restricted copies used to keep
+    full-range IMU).
+  - `from_imu_segment` puts SPAR's watch into the forearm slot.
+- Tests: `hub/tests/test_strap_kin.py` (5) and `test_virtual_straps_track_the_camera_angles`. 117 tests pass.
+- Synthetic diagnostic (10 people, GroupKFold 5, 8 epochs; `reports/motionnet_cv_20261027-0207.json`):
+  - strap accuracy 0.681 -> 0.931
+  - faulty-rep sensitivity 0.197 -> 0.609 (shrug stays invisible to the straps)
+  - unknown rejection 0.837 -> 1.000
+  - skeleton and fused unchanged at about 0.95
+  - Still a code-path check, not real performance.
+
+For Codex:
+- The recorder does not store strap data yet. When the BLE firmware lands it should save per-frame quaternions and
+  gyro per strap, plus the N-pose and forward-raise samples, so real sessions use the same `StrapCalibration`.
+- Your public run (`reports/motionnet_cv_20261014-2357.json`, untracked) used feature v1. Re-run it to compare.
+
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
 `api/server.py`, `core/coach.py`, `__main__.py`): check `git diff` first and commit right after editing.

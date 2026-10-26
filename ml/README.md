@@ -32,6 +32,24 @@ people, each fold trains on almost no one and the numbers mean nothing.
   at the looser 99% quantile, and the report's `calibration` entry says so.
 - Recordings made before per-attempt labels existed are skipped (rejected attempts would be mislabelled).
 
+## Strap input (feature version 2)
+The strap block matches the device: three BNO085s on the upper arm, forearm and trunk/waist. Per frame it holds the
+same nine clinical values as the skeleton block, measured by the straps through `physiobuddy_hub/core/strap_kin.py`
+(same thorax frame, formulas, thresholds and compensation flags as the camera), plus each strap's angular rate and
+gravity direction in segment axes and a present flag. Version 1 (raw wrist / upper-arm / chest acc + gyro) is gone,
+and the hub refuses a model exported with another feature version.
+
+- **Calibration** (`StrapCalibration`): N-pose (upright, arms at the sides, palms to the thighs), then a slow
+  straight-arm forward raise. The raise fixes how far each arm strap is turned around the limb; without it rotation
+  is off by that amount (synthetic check: 15 deg error with N-pose only, about 2 deg with the raise).
+- **Training straps** (`pbml/straps.py`): synthetic and augmented skeletons drive virtual straps worn imperfectly
+  (up to 15 deg around the limb, a few degrees of tilt, own yaw reference, noise, gyro bias), calibrated with the
+  real `StrapCalibration` (forward raise in 60 % of sessions), one strap missing in 10 % of copies. Augmented
+  copies re-derive the straps from the augmented motion, so a range-restricted copy has range-restricted straps.
+- SPAR's wrist watch fills only the forearm rate and gravity slots (no angles from one sensor).
+- Rule checks first: lean, elbow drift and apparent-vs-true gaps are flags computed from strap geometry, so the
+  coach catches them without the network. The network judges what geometry cannot.
+
 ## When the hub may use a model
 `train_motionnet.py` exports to `hub/models/motionnet/`. Every export starts **advisory only**: the hub shows the
 network's opinion but it cannot reject reps, add issues or switch exercises. `validate_real.py` replays held-out
@@ -48,6 +66,7 @@ Run the hub with `--motionnet off` for rules-only coaching.
 ## Known limitations
 - The skeleton branch has only seen Kinect / motion-capture skeletons, never RealSense + RTMPose.
 - No public source records camera and straps together, so fused performance is unmeasured until team recordings.
-- The strap branch has only seen a wrist-worn Apple Watch, not BNO085 straps on arm, forearm and chest.
+- Strap features are trained on virtual straps only (plus SPAR's watch in the forearm slot) until team recordings
+  include strap quaternions. The recorder does not store strap data yet: that needs the BLE firmware.
 - `pbml/exercises.py` holds the 11-class Lee 2024 label set used only by the baseline; PB-MotionNet uses the six
   classes in `physiobuddy_hub/ml/features.py`.

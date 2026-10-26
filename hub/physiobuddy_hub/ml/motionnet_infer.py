@@ -17,7 +17,7 @@ from typing import Callable, Optional
 import numpy as np
 
 from .features import (
-    CLASSES, COMP_FLAGS, D_IN, PHASES, WINDOW, frame_vector, imu_features, skeleton_features,
+    CLASSES, COMP_FLAGS, D_IN, FEATURE_VERSION, PHASES, WINDOW, frame_vector, imu_features, skeleton_features,
 )
 
 log = logging.getLogger(__name__)
@@ -75,9 +75,10 @@ class MotionNetRunner:
             log.warning("onnxruntime not installed: rules-only coaching")
             return cls(None, **kw)
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
-        if meta.get("feature_schema", {}).get("d_in", D_IN) != D_IN:
-            log.error("PB-MotionNet feature schema mismatch (model d_in %s, hub %s): disabled",
-                      meta["feature_schema"].get("d_in"), D_IN)
+        schema = meta.get("feature_schema", {})
+        if schema.get("d_in", D_IN) != D_IN or schema.get("version", 1) != FEATURE_VERSION:
+            log.error("PB-MotionNet feature schema mismatch (model d_in %s v%s, hub %s v%s): disabled",
+                      schema.get("d_in"), schema.get("version", 1), D_IN, FEATURE_VERSION)
             return cls(None, **kw)
         providers = [p for p in ("TensorrtExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider")
                      if p in ort.get_available_providers()]

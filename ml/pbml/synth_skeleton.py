@@ -1,4 +1,4 @@
-"""Synthetic skeleton (+ paired virtual wrist IMU) sequences for code-path checks and unit tests.
+"""Synthetic skeleton (+ paired virtual strap) sequences for code-path checks and unit tests.
 
 Parametric people (shoulder width, limb lengths, speed, ROM, camera distance/yaw) doing the PB-MotionNet
 classes, with ground-truth phases and scripted compensations. Numbers from models trained on this say
@@ -14,10 +14,10 @@ from physiobuddy_hub.datatypes import (
     R_SHOULDER, R_WRIST,
 )
 
-from .datasets.common import SkeletonSequence
+from .datasets.common import DEFAULT_UP_CAM, SkeletonSequence
+from .straps import segments_from_points
 
 FPS = 30.0
-G = 9.81
 CLASSES = ("flexion", "abduction", "external_rotation", "internal_rotation", "pendulum", "unknown")
 COMPS = {"flexion": ("SHRUG", "TOO_FAST"), "abduction": ("TRUNK_LEAN", "SHRUG"),
          "external_rotation": ("ELBOW_DRIFT",), "internal_rotation": ("ELBOW_DRIFT",)}
@@ -90,7 +90,7 @@ def _unknown_motion(rng, n):
 
 
 def make_sequence(exercise: str, side: str, rng, p: dict, comp=None, n_reps: int = 3, subject: str = "SYN"):
-    """-> (SkeletonSequence with meta phase/comp/imu, paired wrist IMU (acc m/s^2, gyro deg/s))."""
+    """-> (SkeletonSequence with meta phase/comp, segment orientations for the virtual straps (``straps.py``))."""
     zs = 1.0 if side == "right" else -1.0
     fast = comp == "TOO_FAST"
     if exercise == "unknown":
@@ -156,8 +156,8 @@ def make_sequence(exercise: str, side: str, rng, p: dict, comp=None, n_reps: int
     yaw = _ry(np.radians(p["yaw"]))
     world = pts_body @ yaw.T
     cam = np.stack([-world[..., 2], -world[..., 1], p["dist"] - world[..., 0]], axis=-1)
+    segs = segments_from_points(cam, side, DEFAULT_UP_CAM)          # straps see the clean motion
     cam += rng.normal(0, 0.006, cam.shape)
-    acc, gyro = _virtual_wrist_imu(world, side, rng)
     correct = None if exercise == "unknown" else comp is None
     comp_vec = np.full(len(COMP_FLAGS), -1 if exercise == "unknown" else 0)
     comp_vec[COMP_FLAGS.index("SHORT_ROM")] = -1
@@ -166,33 +166,11 @@ def make_sequence(exercise: str, side: str, rng, p: dict, comp=None, n_reps: int
     seq = SkeletonSequence(subject=subject, exercise=exercise, side=side, points=cam, fps=FPS, source="synthetic",
                            name=f"{exercise}_{comp or 'ok'}_{kind}", correct=correct,
                            meta={"phase": phase, "comp": comp_vec, "kind": kind})
-    return seq, acc, gyro
-
-
-def _virtual_wrist_imu(world: np.ndarray, side: str, rng) -> tuple:
-    el, wr = (R_ELBOW, R_WRIST) if side == "right" else (L_ELBOW, L_WRIST)
-    sh = R_SHOULDER if side == "right" else L_SHOULDER
-    p = world[:, wr]
-    x = world[:, wr] - world[:, el]
-    x /= np.linalg.norm(x, axis=1, keepdims=True)
-    up = world[:, sh] - world[:, el]
-    z = np.cross(x, up)
-    bad = np.linalg.norm(z, axis=1) < 1e-3
-    z[bad] = np.cross(x[bad], [1.0, 0, 0])
-    z /= np.linalg.norm(z, axis=1, keepdims=True)
-    y = np.cross(z, x)
-    R = np.stack([x, y, z], axis=2)                       # world <- sensor (columns)
-    dt = 1.0 / FPS
-    acc_w = np.gradient(np.gradient(p, dt, axis=0), dt, axis=0) + np.array([0, G, 0])
-    acc = np.einsum("nji,nj->ni", R, acc_w)
-    dR = np.gradient(R, dt, axis=0)
-    W = np.einsum("nji,njk->nik", R, dR)
-    gyro = np.degrees(np.stack([W[:, 2, 1], W[:, 0, 2], W[:, 1, 0]], axis=1))
-    return acc + rng.normal(0, 0.15, acc.shape), gyro + rng.normal(0, 1.5, gyro.shape)
+    return seq, segs
 
 
 def synthetic_people(n_subjects: int = 6, seqs_per_class: int = 3, seed: int = 0, with_comp: bool = True) -> list:
-    """-> list of (SkeletonSequence, acc, gyro) for every class, subject, both sides."""
+    """-> list of (SkeletonSequence, segment orientations) for every class, subject, both sides."""
     rng = np.random.default_rng(seed)
     out = []
     for s in range(n_subjects):

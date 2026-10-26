@@ -1,0 +1,243 @@
+{
+ "sources": [
+  "synthetic(10 subjects) - code-path check only"
+ ],
+ "classes": [
+  "flexion",
+  "abduction",
+  "external_rotation",
+  "internal_rotation",
+  "pendulum",
+  "unknown"
+ ],
+ "cv": {
+  "skeleton": {
+   "n": 6468,
+   "accuracy": 0.9448,
+   "macro_f1": 0.9086,
+   "unknown_rejection": 1.0,
+   "known_false_reject": 0.0576,
+   "confusion": [
+    [
+     977,
+     0,
+     0,
+     0,
+     0,
+     109
+    ],
+    [
+     0,
+     1233,
+     0,
+     0,
+     0,
+     33
+    ],
+    [
+     0,
+     0,
+     1188,
+     0,
+     0,
+     94
+    ],
+    [
+     0,
+     0,
+     0,
+     1160,
+     0,
+     121
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     1279,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     274
+    ]
+   ],
+   "phase_frame_acc": 0.7282,
+   "form_sensitivity": 0.8768,
+   "form_specificity": 0.9957
+  },
+  "imu": {
+   "n": 6468,
+   "accuracy": 0.9307,
+   "macro_f1": 0.895,
+   "unknown_rejection": 1.0,
+   "known_false_reject": 0.0678,
+   "confusion": [
+    [
+     1056,
+     0,
+     0,
+     0,
+     0,
+     30
+    ],
+    [
+     0,
+     1167,
+     0,
+     0,
+     0,
+     99
+    ],
+    [
+     0,
+     0,
+     1132,
+     14,
+     0,
+     136
+    ],
+    [
+     0,
+     0,
+     14,
+     1163,
+     0,
+     104
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     1228,
+     51
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     274
+    ]
+   ],
+   "phase_frame_acc": 0.7032,
+   "form_sensitivity": 0.6093,
+   "form_specificity": 0.9784
+  },
+  "fused": {
+   "n": 6468,
+   "accuracy": 0.947,
+   "macro_f1": 0.9119,
+   "unknown_rejection": 1.0,
+   "known_false_reject": 0.0554,
+   "confusion": [
+    [
+     1030,
+     0,
+     0,
+     0,
+     0,
+     56
+    ],
+    [
+     0,
+     1220,
+     0,
+     0,
+     0,
+     46
+    ],
+    [
+     0,
+     0,
+     1160,
+     0,
+     0,
+     122
+    ],
+    [
+     0,
+     0,
+     0,
+     1162,
+     0,
+     119
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     1279,
+     0
+    ],
+    [
+     0,
+     0,
+     0,
+     0,
+     0,
+     274
+    ]
+   ],
+   "phase_frame_acc": 0.7817,
+   "form_sensitivity": 0.8894,
+   "form_specificity": 0.9876
+  },
+  "protocol": "group_5fold",
+  "scored": "original windows of held-out subjects; unknown cutoff tuned on held-out calibration subjects",
+  "calibration": [
+   {
+    "fold": 1,
+    "held_out": [
+     "SYN06",
+     "SYN09"
+    ],
+    "in_sample_modes": []
+   },
+   {
+    "fold": 2,
+    "held_out": [
+     "SYN04",
+     "SYN05"
+    ],
+    "in_sample_modes": []
+   },
+   {
+    "fold": 3,
+    "held_out": [
+     "SYN02",
+     "SYN07"
+    ],
+    "in_sample_modes": []
+   },
+   {
+    "fold": 4,
+    "held_out": [
+     "SYN00",
+     "SYN06"
+    ],
+    "in_sample_modes": []
+   },
+   {
+    "fold": 5,
+    "held_out": [
+     "SYN06",
+     "SYN08"
+    ],
+    "in_sample_modes": []
+   }
+  ]
+ },
+ "limitations": [
+  "Skeleton branch has never seen a RealSense + RTMPose skeleton (public Kinect / motion-capture only). Results do not describe the Clinic Station until validated on team recordings.",
+  "Camera + strap together was not measured on real people: no source records both. Needs team recordings with the straps worn."
+ ]
+}

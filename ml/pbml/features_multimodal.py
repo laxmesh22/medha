@@ -11,8 +11,8 @@ import numpy as np
 
 from physiobuddy_hub.core.skeleton_kin import SkeletonKinematics
 from physiobuddy_hub.ml.features import (  # noqa: F401  (re-exported)
-    CLASSES, COMP_FLAGS, D_IMU, D_IN, D_KIN, D_MASK, D_POS, D_SKEL, FPS, IMU_SENSORS, PHASES, STRIDE, WINDOW,
-    frame_vector, imu_features, phase_labels, skeleton_features, windows,
+    CLASSES, COMP_FLAGS, D_IMU, D_IN, D_KIN, D_MASK, D_POS, D_SKEL, FEATURE_VERSION, FPS, IMU_SENSORS, PHASES,
+    STRIDE, WINDOW, frame_vector, imu_features, phase_labels, skeleton_features, windows,
 )
 
 from .datasets.common import DEFAULT_UP_CAM, SkeletonSequence, resample, to_skeleton3d
@@ -59,8 +59,9 @@ def flag_fraction(angs: list, flag: str) -> float:
 
 
 def from_skeleton_sequence(seq: SkeletonSequence, shrug_baseline: Optional[float] = None,
-                           imu: Optional[tuple] = None) -> Sample:
-    """Skeleton sequence (optionally with a paired wrist IMU ``(acc, gyro)`` at the same frames) -> Sample.
+                           straps: Optional[list] = None) -> Sample:
+    """Skeleton sequence (optionally with paired strap frames, one ``imu_features`` dict per skeleton frame, from
+    ``straps.strap_frames`` or a recording) -> Sample.
 
     Ground-truth ``meta["phase"]`` / ``meta["comp"]`` (synthetic data, recorder sessions) win over the weak
     phase labels derived from the angle trajectory.
@@ -74,10 +75,9 @@ def from_skeleton_sequence(seq: SkeletonSequence, shrug_baseline: Optional[float
     if shrug_baseline is None:
         shrug_baseline = seq.meta.get("shrug_baseline")
     x, angs = skeleton_sequence_features(pts, seq.side, seq.up_cam, shrug_baseline)
-    if imu is not None:
-        acc, gyro = np.asarray(imu[0])[idx], np.asarray(imu[1])[idx]
-        for t in range(len(x)):
-            f, ok = imu_features({"wrist": (acc[t], gyro[t])})
+    if straps is not None:
+        for t, i in enumerate(idx):
+            f, ok = imu_features(straps[i])
             x[t, D_SKEL:D_SKEL + D_IMU] = f
             x[t, -1] = float(ok)
     if "phase" in seq.meta:
@@ -92,14 +92,22 @@ def from_skeleton_sequence(seq: SkeletonSequence, shrug_baseline: Optional[float
                   subject=seq.subject, source=seq.source, name=seq.name)
 
 
-def from_imu_segment(seg, sensor: str = "wrist") -> Sample:
-    """Team/SPAR ``Segment`` (100 Hz, m/s^2, deg/s) -> IMU-only Sample at 30 Hz."""
+def from_imu_segment(seg, sensor: str = "forearm") -> Sample:
+    """Team/SPAR ``Segment`` (100 Hz, m/s^2, deg/s) -> strap-only Sample at 30 Hz.
+
+    A wrist-worn IMU (SPAR's watch) stands in for the forearm strap: its gyro fills the forearm rate slot and its
+    low-passed accelerometer (= world up at rest) the forearm up slot. No angles (one sensor gives no joint angle).
+    The watch axes are not the pod axes; ``augment.imu_augment`` rotations cover that in training.
+    """
     from .data import FS
 
     a = resample(np.hstack([seg.acc, seg.gyro]), FS, FPS)
+    k = max(1, int(0.25 * FPS))
+    up = np.stack([np.convolve(np.pad(a[:, j], (k, k), mode="edge"), np.ones(2 * k + 1) / (2 * k + 1), "valid")
+                   for j in range(3)], axis=1)
     x = np.zeros((len(a), D_IN), dtype=np.float32)
     for t in range(len(a)):
-        f, ok = imu_features({sensor: (a[t, :3], a[t, 3:])})
+        f, ok = imu_features({"gyro": {sensor: a[t, 3:]}, "up": {sensor: up[t]}})
         x[t] = frame_vector(None, False, f, ok)
     ex = seg.exercise if seg.exercise in CLASSES else "unknown"
     return Sample(x=x, exercise=CLASSES.index(ex), phase=np.full(len(x), -1, np.int64),
