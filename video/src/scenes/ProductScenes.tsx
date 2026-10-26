@@ -17,7 +17,7 @@ export const Product: React.FC = () => {
     { key: "lipo", label: "500 mAh LiPo", sub: "USB-C charging", dx: -210, dy: 40, at: 4 },
     { key: "drv2605", label: "DRV2605L haptics", sub: "haptic cue on the arm", dx: 190, dy: -70, at: 8 },
     { key: "xiao", label: "XIAO ESP32-S3", sub: "wireless to the station", dx: 220, dy: 70, at: 12 },
-    { key: "bno085", label: "BNO085 IMU", sub: "9-axis orientation", dx: -230, dy: 130, at: 16 },
+    { key: "bno085", label: "BNO085 IMU", sub: "9-axis orientation", dx: -300, dy: -60, at: 16 },
   ];
   return (
     <Footage
@@ -37,7 +37,7 @@ export const Product: React.FC = () => {
               end={EXPLODED[1] + p.at / 2}
             />
           ))}
-          <SceneTitle kicker="Upper-arm pod" title="Everything in 61 × 31 mm" sub="3D-printed PETG, real component models" />
+          <SceneTitle kicker="Upper-arm pod" title="Everything in 61 × 31 mm" sub="3D-printed PETG, real component models" end={EXPLODED[0]} />
         </AbsoluteFill>
       )}
     />
@@ -134,7 +134,7 @@ export const Family: React.FC = () => {
               </div>
             );
           })}
-          <SceneTitle kicker="One rail, three units" title="Same base, any pod" />
+          <SceneTitle kicker="One rail, three units" title="Every pod fits every base" />
         </AbsoluteFill>
       )}
     />

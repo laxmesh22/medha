@@ -184,6 +184,14 @@ def render_shot(sc, cam, f0, name, track):
         return
     d = FRAMES / name
     d.mkdir(parents=True, exist_ok=True)
+    if "--frames" in argv:      # re-render part of a shot (offsets within it), keeping the frames already there
+        a = int(argv[argv.index("--frames") + 1])
+        b = int(argv[argv.index("--frames") + 2])
+        sc.frame_start, sc.frame_end = f0 + a, f0 + b
+        sc.render.filepath = str(d) + "/"
+        bpy.ops.render.render(animation=True)
+        print("rendered", name, f"frames {a}-{b}")
+        return
     for old in d.glob("*.png"):
         old.unlink()
     sc.frame_start, sc.frame_end = f0, f0 + n - 1

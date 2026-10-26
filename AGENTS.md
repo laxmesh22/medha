@@ -22,8 +22,7 @@ schedule). Showcase: 31 Oct 2026, IIT Bombay. ML specifics: `ml/README.md`.
 7. Test recording sessions go to a scratch `--dataset-dir`, never `ml/data/real` (that folder is training data).
 
 ## Now working on
-- Claude Code: device video v2: Blender footage (`tools/blender/device_film.py`) edited in Remotion (`video/`),
-  synthesized BGM (`tools/audio/`). Not touching hub/, ml/ or web/.
+- (empty)
 
 ## Log
 ### 2026-10-14 22:57 · Claude Code (session "Agent handoff with OpenCV gesture tracking")
@@ -89,6 +88,14 @@ to the user: keep the slide-rail quick-release idea, not the clip. Raw files sta
 - Fit now checked against real vendor models (Adafruit BNO085 4754 and DRV2605L 2305, Seeed XIAO ESP32-S3);
   the XIAO is 4.5 mm tall, so the arm pod is 23.1 mm. Vendor STEPs are git-ignored (see `hardware/cad/vendor/`).
 - No changes to `hub/` or `ml/`.
+
+### 2026-10-26 23:35 · Claude Code: device film v2
+`hardware/renders/physio_buddy_film_v2.mp4` (35 s, 1080p, music). Pipeline in `video/README.md`:
+`tools/blender/device_film.py` (Cycles shots + per-frame tracking JSON with skeleton-measured arm angles) ->
+`video/scripts/encode_footage.py` -> `tools/audio/make_soundtrack.py` (synthesized, licence-clean) -> Remotion in
+`video/`. Lessons: on this laptop Cycles must use the OptiX denoiser (OIDN picked the Intel iGPU: 35 s/frame); avatar
+shots keep their timeline frame numbers (encoder passes `-start_number`); `--frames a b` re-renders part of a shot.
+No changes to hub/, ml/ or web/.
 
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,

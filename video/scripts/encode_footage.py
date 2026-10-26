@@ -18,12 +18,14 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for shot in shots:
         src = FRAMES / shot
-        n = len(list(src.glob("*.png")))
+        pngs = sorted(src.glob("*.png"))
+        n = len(pngs)
         if not n:
             print("no frames for", shot)
             continue
         dst = OUT / f"{shot}.mp4"
-        cmd = ["npx", "remotion", "ffmpeg", "-y", "-loglevel", "error", "-framerate", "30", "-i", str(src / "%04d.png"),
+        cmd = ["npx", "remotion", "ffmpeg", "-y", "-loglevel", "error", "-framerate", "30", "-start_number", pngs[0].stem,   # avatar shots keep their timeline frame numbers
+               "-i", str(src / "%04d.png"),
                "-c:v", "libx264", "-crf", "12", "-preset", "slow", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(dst)]
         subprocess.run(cmd, check=True, cwd=ROOT / "video", shell=sys.platform == "win32")
         print(f"{shot}: {n} frames -> {dst}")

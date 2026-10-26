@@ -14,8 +14,8 @@ export const Reveal: React.FC = () => {
       push={0.02}
       overlay={(map) => (
         <AbsoluteFill>
-          <Callout anchor={map(point("reveal", "upperarm", frame))} label="Upper arm" sub="humerus angle + haptic cue" dx={-260} dy={-90} start={40} />
-          <Callout anchor={map(point("reveal", "forearm", frame))} label="Forearm" sub="rotation the camera can't see" dx={-240} dy={70} start={52} />
+          <Callout anchor={map(point("reveal", "upperarm", frame))} label="Upper arm" sub="humerus angle + haptic cue" dx={-190} dy={-90} start={40} />
+          <Callout anchor={map(point("reveal", "forearm", frame))} label="Forearm" sub="rotation the camera can't see" dx={-150} dy={70} start={52} />
           <Callout anchor={map(point("reveal", "trunk", frame))} label="Waist" sub="trunk reference" dx={250} dy={40} start={64} />
           <SceneTitle kicker="Worn in the clinic" title="Three straps, one rail" align="left" delay={14} />
         </AbsoluteFill>
@@ -35,7 +35,8 @@ const Exercise: React.FC<{
   podSub: string;
   dx: number;
   dy: number;
-}> = ({ shot, exercise, field, source, max, pod, podLabel, podSub, dx, dy }) => {
+  hud: "left" | "right";
+}> = ({ shot, exercise, field, source, max, pod, podLabel, podSub, dx, dy, hud }) => {
   const frame = useCurrentFrame();
   return (
     <Footage
@@ -43,7 +44,7 @@ const Exercise: React.FC<{
       push={0.025}
       overlay={(map) => (
         <AbsoluteFill>
-          <AngleHud shot={shot} field={field} exercise={exercise} source={source} max={max} />
+          <AngleHud shot={shot} field={field} exercise={exercise} source={source} max={max} side={hud} />
           <Callout anchor={map(point(shot, pod, frame))} label={podLabel} sub={podSub} dx={dx} dy={dy} start={20} end={150} />
         </AbsoluteFill>
       )}
@@ -61,8 +62,9 @@ export const Flexion: React.FC = () => (
     pod="upperarm"
     podLabel="Upper-arm pod"
     podSub="moves rigidly with the humerus"
-    dx={240}
-    dy={-60}
+    dx={-165}
+    dy={-120}
+    hud="right"
   />
 );
 
@@ -76,8 +78,9 @@ export const Abduction: React.FC = () => (
     pod="upperarm"
     podLabel="Upper-arm pod"
     podSub="elevation in the side plane"
-    dx={180}
-    dy={150}
+    dx={-250}
+    dy={260}
+    hud="right"
   />
 );
 
@@ -91,7 +94,8 @@ export const Rotation: React.FC = () => (
     pod="forearm"
     podLabel="Forearm pod"
     podSub="elbow at 90°, forearm swings out"
-    dx={-200}
-    dy={-150}
+    dx={260}
+    dy={-60}
+    hud="left"
   />
 );

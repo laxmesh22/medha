@@ -18,13 +18,14 @@ const arc = (cx: number, cy: number, r: number, a0: number, a1: number) => {
 };
 
 /** Live angle panel: the value is measured from the posed skeleton in Blender (geometry), like the station does. */
-export const AngleHud: React.FC<{ shot: string; field: "elevation" | "rotation"; exercise: string; source: string; max: number }> = ({
-  shot,
-  field,
-  exercise,
-  source,
-  max,
-}) => {
+export const AngleHud: React.FC<{
+  shot: string;
+  field: "elevation" | "rotation";
+  exercise: string;
+  source: string;
+  max: number;
+  side?: "left" | "right";
+}> = ({ shot, field, exercise, source, max, side = "left" }) => {
   const frame = useCurrentFrame();
   const data = series(shot, field);
   const i = Math.max(0, Math.min(data.length - 1, Math.round(frame)));
@@ -50,8 +51,10 @@ export const AngleHud: React.FC<{ shot: string; field: "elevation" | "rotation";
     <div
       style={{
         position: "absolute",
-        left: 110,
-        top: 120,
+        ...(side === "left" ? { left: 110 } : { right: 110 }),
+        top: 110,
+        scale: 0.86,
+        transformOrigin: side === "left" ? "top left" : "top right",
         width: 520,
         padding: "34px 40px 36px",
         background: C.panel,
@@ -59,7 +62,7 @@ export const AngleHud: React.FC<{ shot: string; field: "elevation" | "rotation";
         borderRadius: 18,
         backdropFilter: "blur(10px)",
         opacity: inT * out,
-        translate: `${(1 - inT) * -40}px 0px`,
+        translate: `${(1 - inT) * (side === "left" ? -40 : 40)}px 0px`,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 14, fontFamily: FONT.mono, fontSize: 22, letterSpacing: 4, color: C.teal }}>

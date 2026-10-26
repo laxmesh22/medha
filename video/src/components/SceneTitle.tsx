@@ -5,18 +5,20 @@ import { C, FONT } from "../theme";
 const ease = Easing.bezier(0.16, 1, 0.3, 1);
 
 /** Lower-third: teal kicker, headline and one supporting line, bottom-left inside the safe area. */
-export const SceneTitle: React.FC<{ kicker: string; title: string; sub?: string; delay?: number; align?: "left" | "right" }> = ({
+export const SceneTitle: React.FC<{ kicker: string; title: string; sub?: string; delay?: number; end?: number; align?: "left" | "right" }> = ({
   kicker,
   title,
   sub,
   delay = 8,
+  end,
   align = "left",
 }) => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   const t = (a: number) =>
     interpolate(frame, [delay + a, delay + a + 18], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease });
-  const out = interpolate(frame, [durationInFrames - 22, durationInFrames - 8], [1, 0], {
+  const stop = end ?? durationInFrames - 8;
+  const out = interpolate(frame, [stop - 14, stop], [1, 0], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
