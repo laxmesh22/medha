@@ -7,6 +7,7 @@
     12-30 s  main: the patient appears; kick, hats, clap, bass under the same chords
     30-35 s  outro: drums out, last chord rings into the reverb, fade
 Also writes whoosh.wav (scene transitions), click.wav (PB-rail latch) and tick.wav (callouts).
+`--guide SECONDS` instead writes guide_bgm.wav (calm bed for the assembly guide) and chime.wav (new step).
 """
 
 import argparse
@@ -47,7 +48,7 @@ def saw(f, n, phase=0.0):
     """Band-limited sawtooth (additive)."""
     t = np.arange(n) / SR
     out = np.zeros(n)
-    for k in range(1, int(min(40, (SR / 2) / f)) + 1):
+    for k in range(1, int(min(40, 4000 / f)) + 1):     # everything is low-passed below ~3.2 kHz anyway
         out += np.sin(2 * np.pi * k * f * t + phase * k) / k
     return out * (2 / np.pi)
 
@@ -103,9 +104,8 @@ def pluck(f, n):
     return lp(x, 3200) * np.exp(-t / 0.11)
 
 
-def arp(total):
+def arp(total, step=BEAT / 4, gain=0.17):
     L, R = np.zeros(total), np.zeros(total)
-    step = BEAT / 4
     pattern = [0, 2, 4, 1, 3, 4, 2, 1]
     n_note = int(0.45 * SR)
     for i in range(int(total / SR / step)):
@@ -125,7 +125,7 @@ def arp(total):
         src = R if k % 2 else L
         dst = L if k % 2 else R
         dst[d * k:] += g * src[:-d * k]
-    return L * 0.17, R * 0.17
+    return L * gain, R * gain
 
 
 def kick():
@@ -314,12 +314,46 @@ def write_wav(path, L, R, peak_db=-1.0):
     print("wrote", path, f"{len(L) / SR:.2f} s")
 
 
+def guide_track(seconds):
+    """Calm bed for the assembly guide: pad + eighth-note arpeggio + soft sub, no drums, no drop."""
+    total = int(seconds * SR)
+    pl, pr = pad(total)
+    al, ar = arp(total, step=BEAT / 2, gain=0.12)
+    t = np.arange(total) / SR
+    sub = np.zeros(total)
+    n_bar = int(BAR * SR)
+    for b in range(int(np.ceil(total / n_bar))):
+        n = n_bar + int(0.3 * SR)
+        tt = np.arange(n) / SR
+        note = np.sin(2 * np.pi * hz(ROOTS[b % 4]) * tt) * env_adsr(n, 0.3, 0.5, 0.7, 0.4)
+        place(sub, note, b * BAR)
+    L, R = reverb(pl + al, pr + ar, mix=0.4)
+    L, R = L + 0.12 * sub, R + 0.12 * sub
+    fade = np.clip((seconds - t) / 4.0, 0, 1) * np.clip(t / 1.5, 0, 1)
+    L, R = np.tanh(L * fade * 1.3) / 1.3, np.tanh(R * fade * 1.3) / 1.3
+    return L, R
+
+
+def chime():
+    """Soft two-partial bell for each new step."""
+    n = int(1.2 * SR)
+    t = np.arange(n) / SR
+    x = (np.sin(2 * np.pi * 1318.5 * t) + 0.5 * np.sin(2 * np.pi * 1975.5 * t) + 0.25 * np.sin(2 * np.pi * 2637 * t))
+    x *= np.exp(-t / 0.35) * (1 - np.exp(-t / 0.003))
+    return x * 0.9, x * 0.8
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="video/public/audio")
     ap.add_argument("--seconds", type=float, default=35.0)
+    ap.add_argument("--guide", type=float, default=0.0, help="also write guide_bgm.wav of this length + chime.wav")
     a = ap.parse_args()
     out = Path(a.out)
+    if a.guide:
+        write_wav(out / "guide_bgm.wav", *guide_track(a.guide), peak_db=-3)
+        write_wav(out / "chime.wav", *chime(), peak_db=-6)
+        return
     write_wav(out / "bgm.wav", *soundtrack(a.seconds))
     write_wav(out / "whoosh.wav", *whoosh(), peak_db=-3)
     write_wav(out / "click.wav", *click(), peak_db=-2)

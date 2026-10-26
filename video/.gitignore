@@ -8,3 +8,6 @@ out
 
 # Rendered Blender shots (regenerate: tools/blender/device_film.py, then encode)
 public/footage
+public/guide/footage
+public/guide/stills
+public/audio/guide_bgm.wav

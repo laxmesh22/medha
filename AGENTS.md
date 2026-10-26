@@ -22,8 +22,7 @@ schedule). Showcase: 31 Oct 2026, IIT Bombay. ML specifics: `ml/README.md`.
 7. Test recording sessions go to a scratch `--dataset-dir`, never `ml/data/real` (that folder is training data).
 
 ## Now working on
-- Claude Code: assembly guide video (`tools/blender/assembly_guide.py`, `video/src/guide/`). Not touching hub/, ml/
-  or web/.
+- (empty)
 
 ## Log
 ### 2026-10-14 22:57 · Claude Code (session "Agent handoff with OpenCV gesture tracking")
@@ -97,6 +96,13 @@ to the user: keep the slide-rail quick-release idea, not the clip. Raw files sta
 `video/`. Lessons: on this laptop Cycles must use the OptiX denoiser (OIDN picked the Intel iGPU: 35 s/frame); avatar
 shots keep their timeline frame numbers (encoder passes `-start_number`); `--frames a b` re-renders part of a shot.
 No changes to hub/, ml/ or web/.
+
+### 2026-10-27 01:00 · Claude Code: assembly guide video
+`hardware/renders/physio_buddy_assembly_guide.mp4` (2:29, 19 steps; `_mobile.mp4` is a 14 MB copy). Blender clips
+from `tools/blender/assembly_guide.py` (one clip per build step, CAD-accurate: the design has no screws), edited in
+Remotion (`video/src/guide/`: step panels, animated wiring diagram from agenthandoff.md section 6, callouts).
+Regenerate: render the clips, `video/scripts/encode_footage.py --guide`, `tools/audio/make_soundtrack.py --guide 151`,
+then `npx remotion render AssemblyGuide`. Guide stills, footage and the long music bed are git-ignored.
 
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
