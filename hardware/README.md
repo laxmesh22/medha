@@ -14,7 +14,7 @@ fit, and exports:
 ## The system
 - **Upper-arm unit (Unit A):** `pod_arm_body` + `pod_arm_deck` + `pod_arm_lid` (PB-ARM) on `base_upperarm`.
   Bottom layer: BNO085 #1, XIAO ESP32-S3 on rails with the coin motor underneath, slide switch, USB-C port.
-  Deck: 500 mAh LiPo (752530) + DRV2605L. Pod 60.7 x 30.6 x 22.2 mm (25.2 mm with the rail).
+  Deck: 500 mAh LiPo (752530) + DRV2605L. Pod 60.7 x 30.6 x 23.1 mm (26.1 mm with the rail).
 - **Forearm unit:** `pod_forearm_body` + `pod_forearm_lid` (PB-FORE) on `base_forearm`. BNO085 #2 only, Qwiic cable to
   the arm pod. Pod 36.6 x 28.4 x 12.4 mm.
 - **Trunk unit (Unit B):** arm pod body + deck with `pod_waist_lid` (PB-WAIST) on `base_waist` (40 mm belt), or
@@ -61,7 +61,7 @@ The video: `tools/blender/device_on_avatar.py` with modes `still`, `test`, `prod
 First-time setup of the CAD environment: `uv venv --python 3.12 tools/cad/.venv` then `uv pip install cadquery pywin32`.
 
 ## Make the fit exact
-Component bays come from seller dimensions with 0.3 mm clearance (the BNO085 bay fits both the 7Semi and Adafruit
-boards). Either edit `COMPONENTS` in `physio_pod.py` with caliper measurements, or put manufacturer STEP files in
+Component bays have 0.3 mm clearance. The BNO085, XIAO ESP32-S3 and DRV2605L are checked against their vendor STEP
+models; the LiPo and switch come from seller dimensions (the BNO085 bay also fits the 7Semi board). Either edit `COMPONENTS` in `physio_pod.py` with caliper measurements, or put manufacturer STEP files in
 `cad/vendor/` (names in `cad/vendor/README.md`). The build then checks the real models for collisions and warns if a
 board is bigger than its bay.

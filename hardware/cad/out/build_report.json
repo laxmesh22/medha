@@ -8,7 +8,7 @@
   "xiao": [
    21.0,
    17.8,
-   3.6
+   4.5
   ],
   "lipo": [
    33.0,
@@ -36,10 +36,10 @@
    "size_mm": [
     60.7,
     30.6,
-    23.2
+    24.1
    ],
-   "volume_cm3": 13.23,
-   "pla_g": 9.8
+   "volume_cm3": 13.57,
+   "pla_g": 10.1
   },
   "pod_arm_deck": {
    "size_mm": [
@@ -179,17 +179,22 @@
   }
  },
  "fit_problems": [],
- "vendor_models": [],
+ "vendor_models": [
+  "bno085: vendor model bno085.step 25.4 x 22.9 x 4.5 mm",
+  "xiao: vendor model xiao_esp32s3.step 22.5 x 17.8 x 4.5 mm",
+  "drv2605: vendor model drv2605l.step 16.5 x 17.8 x 2.7 mm",
+  "bno085: vendor model bno085.step 25.4 x 22.9 x 4.5 mm"
+ ],
  "pods": {
   "arm": {
    "outer_mm": [
     60.7,
     30.6,
-    22.2
+    23.1
    ],
-   "with_rail_mm": 25.2,
+   "with_rail_mm": 26.1,
    "layers": {
-    "bottom_h": 6.6,
+    "bottom_h": 7.5,
     "top_h": 8.6,
     "bno_center": [
      -9.95,
@@ -201,7 +206,7 @@
     ],
     "div_x": 4.45,
     "usb_z": 7.0,
-    "deck_z": 8.6,
+    "deck_z": 9.5,
     "sep_x": 5.85
    }
   },

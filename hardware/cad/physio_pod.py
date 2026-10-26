@@ -37,11 +37,11 @@ CLR = 0.3           # clearance around every component (per side)
 CORNER_R = 3.0      # outer vertical edge radius
 
 # Components: (length X, width Y, height Z). Sources: 7Semi BNO055 listing 27x21x4.75 (BNO085 assumed same family),
-# Adafruit BNO085 25.6x22.7x4.6; XIAO ESP32-S3 21x17.8, ~3.6 with USB-C; LiPo 752530 7.5x25x30 + PCM;
+# Adafruit BNO085 25.4x22.9x4.5 (vendor STEP); XIAO ESP32-S3 21x17.8x4.5 (Seeed STEP); LiPo 752530 7.5x25x30 + PCM;
 # DRV2605L breakouts 23.5x19x5.3; ERM coin motor 10x2.7; SS-12D00 slide switch 8.6x3.6x3.5.
 COMPONENTS = {
     "bno085": (27.0, 23.0, 4.8),       # bay fits 7Semi and Adafruit boards
-    "xiao": (21.0, 17.8, 3.6),
+    "xiao": (21.0, 17.8, 4.5),         # height from the Seeed STEP (shield can + USB-C)
     "lipo": (33.0, 26.0, 8.0),
     "drv2605": (19.5, 24.0, 5.3),      # rotated: 19.5 along X
     "motor": (10.0, 10.0, 2.7),
@@ -316,7 +316,7 @@ def dummies(spec: PodSpec, info: dict):
     x_, li, d, m, sw = (COMPONENTS[k] for k in ("xiao", "lipo", "drv2605", "motor", "switch"))
     xc, _ = spec.layers["xiao_center"]
     out["xiao"] = box(x_[0], x_[1], 1.2, x=xc, z=zf + XIAO_RAISE).union(
-        box(7.4, 9.0, 3.2, x=xc + x_[0] / 2 - 3.7 + 1.0, z=zf + XIAO_RAISE + 1.2))      # PCB + USB-C
+        box(7.4, 9.0, x_[2] - 1.2, x=xc + x_[0] / 2 - 3.7 + 1.0, z=zf + XIAO_RAISE + 1.2))      # PCB + USB-C
     out["motor"] = cq.Workplane("XY").circle(m[0] / 2).extrude(m[2]).translate((xc, 0, zf - 1.0 + 0.05))
     out["switch"] = box(sw[0], sw[1], sw[2], x=-spec.inner_l / 2 + sw[0] / 2 + 0.2, y=-6.0, z=zf + 0.7)
     dz = spec.layers["deck_z"] + DECK
@@ -329,7 +329,8 @@ def dummies(spec: PodSpec, info: dict):
 VENDOR = Path(__file__).resolve().parent / "vendor"
 VENDOR_FILES = {   # drop manufacturer STEP files here (any of these names, .step or .stp)
     "bno085": ("bno085", "BNO085"), "xiao": ("xiao_esp32s3", "XIAO_ESP32S3"), "drv2605": ("drv2605l", "DRV2605L"),
-    "lipo": ("lipo_752530", "LiPo_752530"), "switch": ("ss12d00", "SS-12D00"), "motor": ("coin_motor_10mm",),
+    "lipo": ("lipo_752530", "LiPo_752530"), "motor": ("coin_motor_10mm",),
+    # SS-12D00 not imported: its lever and pins pass through the wall slot by design (body 8.5 x 3.5 checked by hand)
 }
 
 
@@ -343,6 +344,12 @@ def vendor_part(key: str, dummy):
                 continue
             shape = cq.importers.importStep(str(p))
             db, vb = dummy.val().BoundingBox(), shape.val().BoundingBox()
+            # many vendor models are Y-up: lay the board flat (thinnest axis -> Z)
+            if vb.ylen < min(vb.xlen, vb.zlen):
+                shape = shape.rotate((0, 0, 0), (1, 0, 0), 90)
+            elif vb.xlen < min(vb.ylen, vb.zlen):
+                shape = shape.rotate((0, 0, 0), (0, 1, 0), 90)
+            vb = shape.val().BoundingBox()
             if (vb.xlen > vb.ylen) != (db.xlen > db.ylen):
                 shape = shape.rotate((0, 0, 0), (0, 0, 1), 90)
                 vb = shape.val().BoundingBox()

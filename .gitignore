@@ -28,6 +28,12 @@ hardware/renders/*.blend
 hardware/renders/*.blend1
 hardware/renders/test_*
 
+# Vendor STEP models (third-party licences): fetch per hardware/cad/vendor/README.md
+hardware/cad/vendor/*.step
+hardware/cad/vendor/*.stp
+hardware/cad/vendor/*.STEP
+hardware/cad/vendor/*.STP
+
 # Secrets
 .env
 *.env.local
