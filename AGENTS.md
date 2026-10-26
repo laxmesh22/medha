@@ -85,6 +85,8 @@ to the user: keep the slide-rail quick-release idea, not the clip. Raw files sta
   shrink-wrapped to the skin, Qwiic cable on hooks), flexion / abduction / external-rotation shots, product
   explode-assemble shot, captions. Output `hardware/renders/physio_buddy_device.mp4` (19 s, 1080p).
   Blender 5.x note: set `image_settings.media_type = "VIDEO"` before `file_format = "FFMPEG"`.
+- Fit now checked against real vendor models (Adafruit BNO085 4754 and DRV2605L 2305, Seeed XIAO ESP32-S3);
+  the XIAO is 4.5 mm tall, so the arm pod is 23.1 mm. Vendor STEPs are git-ignored (see `hardware/cad/vendor/`).
 - No changes to `hub/` or `ml/`.
 
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
