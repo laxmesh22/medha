@@ -22,8 +22,7 @@ schedule). Showcase: 31 Oct 2026, IIT Bombay. ML specifics: `ml/README.md`.
 7. Test recording sessions go to a scratch `--dataset-dir`, never `ml/data/real` (that folder is training data).
 
 ## Now working on
-- Claude Code: device CAD in `hardware/cad/` (CadQuery -> STEP/STL/GLB, SolidWorks parts) and a Blender video of the
-  Rocketbox patient wearing the straps (`tools/blender/`, renders in `hardware/renders/`). Not touching hub/ or ml/.
+- (empty)
 
 ## Log
 ### 2026-10-14 22:57 · Claude Code (session "Agent handoff with OpenCV gesture tracking")
@@ -71,6 +70,22 @@ belt clip: one watertight body 69.2 x 34.7 x 30.9 mm, ~22 g PLA, 3 mm back plate
 ~8 mm grip gap, and a 40 x 13.7 mm slide-rail lug with latch window. It is not an enclosure for the electronics, and
 a spring clip on a strap lets the IMU rock (handoff §6.3: sensors must be rigid on the segment). Recommendation given
 to the user: keep the slide-rail quick-release idea, not the clip. Raw files stay in `assets_src/cad/` (ignored).
+
+### 2026-10-26 · Claude Code: wearable pod CAD and on-body video
+- `hardware/cad/physio_pod.py` (CadQuery): upper-arm pod (BNO085, XIAO ESP32-S3, coin motor, deck with LiPo +
+  DRV2605L), forearm pod (BNO085 only, Qwiic to the arm pod), trunk pod, and curved strap bases for upper arm,
+  forearm, chest and waist (40 mm belt). Every pod slides onto every base on the same dovetail "PB-rail" with a
+  click latch, so the sensor returns to the same place and orientation each session. Fit check passes; all STLs are
+  watertight single bodies. Outputs in `hardware/cad/out/` (STEP, STL, GLB, SLDPRT via
+  `tools/cad/solidworks_convert.py`). Manufacturer STEP files dropped in `hardware/cad/vendor/` are picked up
+  automatically (names in its README); the user is fetching them from GrabCAD.
+- The user asked for the trunk band on the **waist**, not the chest. A waist pod measures the pelvis, so strap-only
+  trunk lean is less accurate; the camera still measures trunk lean. Documented in `hardware/README.md`.
+- `tools/blender/device_on_avatar.py`: the Rocketbox avatar wearing all three units (bone-parented, straps
+  shrink-wrapped to the skin, Qwiic cable on hooks), flexion / abduction / external-rotation shots, product
+  explode-assemble shot, captions. Output `hardware/renders/physio_buddy_device.mp4` (19 s, 1080p).
+  Blender 5.x note: set `image_settings.media_type = "VIDEO"` before `file_format = "FFMPEG"`.
+- No changes to `hub/` or `ml/`.
 
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
