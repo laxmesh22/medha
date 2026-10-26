@@ -22,6 +22,12 @@ ml/data/
 # Raw downloaded assets (Rocketbox FBX/TGA, BodyParts3D OBJ) - regenerate with tools/
 assets_src/
 
+# Blender video intermediates (the final MP4 and stills are committed)
+hardware/renders/frames/
+hardware/renders/*.blend
+hardware/renders/*.blend1
+hardware/renders/test_*
+
 # Secrets
 .env
 *.env.local

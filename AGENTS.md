@@ -22,7 +22,8 @@ schedule). Showcase: 31 Oct 2026, IIT Bombay. ML specifics: `ml/README.md`.
 7. Test recording sessions go to a scratch `--dataset-dir`, never `ml/data/real` (that folder is training data).
 
 ## Now working on
-- (empty)
+- Claude Code: device CAD in `hardware/cad/` (CadQuery -> STEP/STL/GLB, SolidWorks parts) and a Blender video of the
+  Rocketbox patient wearing the straps (`tools/blender/`, renders in `hardware/renders/`). Not touching hub/ or ml/.
 
 ## Log
 ### 2026-10-14 22:57 · Claude Code (session "Agent handoff with OpenCV gesture tracking")
