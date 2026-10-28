@@ -74,7 +74,12 @@ b, strong { font-weight: 700; }
   position: sticky; top: 0; height: 100vh;
 }
 .brand { display: flex; align-items: center; gap: 12px; padding: 0 8px 24px; }
-.brand-mark { width: 36px; height: 36px; border-radius: 12px; background: var(--accent); color: #fff; display: grid; place-items: center; }
+.brand-mark { display: inline-flex; }
+.lockup { display: inline-flex; align-items: center; gap: 12px; }
+.lockup > span { display: flex; flex-direction: column; }
+.wordmark { font-family: Jost, "Futura", "Century Gothic", system-ui, sans-serif; font-weight: 500; letter-spacing: 0.16em; line-height: 1; color: var(--text); }
+.lockup-sub { font-size: 14px; color: var(--text-2); margin-top: 4px; }
+.auth-brand .lockup-sub { font-size: 14px; max-width: 280px; line-height: 1.4; }
 .brand-name { font-weight: 700; font-size: 18px; line-height: 1.1; }
 .brand-sub { font-size: 14px; color: var(--text-2); }
 .nav a {
@@ -219,6 +224,9 @@ textarea.input { padding-block: 12px; }
 /* banners: full width, tinted, 16 px padding */
 .note { background: var(--accent-tint); color: var(--text); border-radius: 12px; padding: 16px; }
 .warn-note, .error { background: var(--caution-tint); color: #7a4800; border-radius: 12px; padding: 16px; } /* errors are amber, never red */
+/* 'No account found' and other stop-level notices: red, as asked for this one message */
+.alert { display: flex; gap: 12px; align-items: flex-start; background: var(--danger-tint); color: var(--danger); border-radius: 12px; padding: 16px; }
+.alert svg { flex: 0 0 auto; margin-top: 2px; }
 .plan-table input, .plan-table select { width: 100%; }
 .plan-table .input { padding-inline: 10px; min-width: 64px; }
 .plan-table select.input { min-width: 190px; }

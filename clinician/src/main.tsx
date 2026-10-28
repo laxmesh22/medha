@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { useEffect } from "react";
 import { BrowserRouter, MemoryRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
+import { api } from "./lib/api";
 import { DataProvider, useData } from "./lib/store";
 import { Login } from "./pages/Auth";
 import { Signup } from "./pages/Signup";
@@ -12,12 +13,35 @@ import { Patients } from "./pages/Patients";
 import { Library, Profile } from "./pages/Profile";
 import "./styles.css";
 
+/** Plain-language reason for a failed load; the raw message stays visible for whoever sets up the backend. */
+function explain(error: string): string {
+  if (/jwt|jws|key|token|401|role/i.test(error)) {
+    return "The database did not accept your sign-in. Check Supabase Third-party Auth (Auth0) and the Auth0 post-login Action that adds role = authenticated.";
+  }
+  if (/fetch|network/i.test(error)) return "The database could not be reached. Check your internet connection and try again.";
+  return "Something went wrong while loading your dashboard.";
+}
+
 function Guard() {
-  const { loading, email, clinician, error } = useData();
+  const { loading, email, clinician, error, reload } = useData();
   if (loading) return <div className="empty" style={{ paddingTop: 120 }}>Loading…</div>;
-  if (error) return <div className="empty error" style={{ paddingTop: 120 }}>Could not load data: {error}</div>;
+  if (error) {
+    return (
+      <div className="auth-form" style={{ minHeight: "100vh" }}>
+        <div className="auth-card">
+          <h1>Could not load your dashboard</h1>
+          <div className="alert">{explain(error)}</div>
+          <p className="muted" style={{ margin: 0, fontSize: 14 }}>Details: {error}</p>
+          <div className="row">
+            <button className="btn" onClick={() => void reload()}>Try again</button>
+            <button className="btn ghost" onClick={async () => { await api.signOut(); window.location.assign("/login"); }}>Sign out</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!email) return <Navigate to="/login" replace />;
-  if (!clinician) return <Navigate to="/signup" replace />;
+  if (!clinician) return <Navigate to="/signup" replace state={{ noAccount: true }} />;
   return <Layout />;
 }
 

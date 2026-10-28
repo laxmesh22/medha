@@ -1,0 +1,12 @@
+{
+  "name": "Auri Clinician",
+  "short_name": "Auri",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "theme_color": "#0a4a4f",
+  "background_color": "#f5f2ea",
+  "display": "standalone",
+  "start_url": "/"
+}

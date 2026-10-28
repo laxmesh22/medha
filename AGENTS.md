@@ -187,6 +187,18 @@ patients link with it from the patient app (Adi), prescribe exercises, see daily
   `video/scripts/capture_dashboard.mjs` (dev server on 5175 + chrome-headless-shell); music
   `tools/audio/make_soundtrack.py --intro 58`.
 
+### 2026-10-28 · Claude Code: dashboard live on Supabase + Auth0 + Vercel, logo
+- `clinician/.env.local` (git-ignored) points at the team's Supabase project and Auth0 tenant
+  `dev-4cz1sir5jj78abm1.us.auth0.com`; `schema.sql` has been run there. Deployed with the Vercel CLI (project
+  `auri-clinician`, same four VITE_ vars set in Vercel): https://auri-clinician.vercel.app. Redeploy:
+  `cd clinician && npx vercel deploy --prod`.
+- Fixed: React StrictMode exchanged the Auth0 code twice ("Invalid state" -> "Could not load data"). Signing in without
+  a doctor profile now shows a red "No account found" banner on sign-up.
+- Logo from the brand sheet (`src/components/Logo.tsx`, `public/favicon.svg`, app icons). Brand colours are final:
+  Deep Teal #0A4A4F, Off-White #F5F2EA.
+- Branch `design-language` (worktree `.claude/worktrees/design-language`) holds the separate restyle to Aditya's
+  design language; it has the same logo, database and sign-in fixes.
+
 ### 2026-10-28 · Claude Code: branch `design-language` (Aditya's Auri Design Language)
 - The user asked for the design language as a **separate version**, not on the main branch. This branch restyles
   `clinician/` only: palette from the doc (#FAFAF7 / #FFFFFF / #1A1A1A / #5C5C57 / #E3E3DD, accent #0F6E6E, tint

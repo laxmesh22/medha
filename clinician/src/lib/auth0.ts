@@ -30,15 +30,21 @@ export async function idToken(): Promise<string | null> {
   return (await a.getIdTokenClaims())?.__raw ?? null;
 }
 
-/** If the URL is an Auth0 callback, finish it and return where the user was going. */
-export async function handleAuth0Redirect(): Promise<string | null> {
+let callback: Promise<string | null> | null = null;
+
+/** If the URL is an Auth0 callback, finish it and return where the user was going. The code can be exchanged only
+ *  once, so concurrent callers (React StrictMode runs the first load twice) share one exchange. */
+export function handleAuth0Redirect(): Promise<string | null> {
   const q = new URLSearchParams(window.location.search);
-  if (!(q.has("code") || q.has("error")) || !q.has("state")) return null;
-  const a = await auth0();
-  try {
-    const r = await a.handleRedirectCallback<{ returnTo?: string }>();
-    return r.appState?.returnTo ?? "/";
-  } finally {
-    window.history.replaceState({}, document.title, window.location.pathname);
-  }
+  if (!(q.has("code") || q.has("error")) || !q.has("state")) return Promise.resolve(null);
+  callback ??= (async () => {
+    const a = await auth0();
+    try {
+      const r = await a.handleRedirectCallback<{ returnTo?: string }>();
+      return r.appState?.returnTo ?? "/";
+    } finally {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  })();
+  return callback;
 }

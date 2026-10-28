@@ -1,6 +1,7 @@
 import { ActivitySquare, ClipboardList, KeyRound, Mail, ShieldCheck, Video } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
+import { AuriLockup } from "../components/Logo";
 import { api } from "../lib/api";
 import { useData } from "../lib/store";
 import type { ClinicianInput } from "../lib/types";
@@ -19,12 +20,7 @@ export function GoogleMark() {
 export function BrandPanel() {
   return (
     <div className="auth-brand">
-      <div className="row" style={{ gap: 12 }}>
-        <span className="brand-mark" aria-hidden>
-          <svg width="20" height="20" viewBox="0 0 32 32"><path d="M7 23 L15 9 L25 23" stroke="currentColor" strokeWidth="3.4" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </span>
-        <span className="brand-name">Auri</span>
-      </div>
+      <AuriLockup size={52} tone="teal" sub="Assisted upper-limb rehabilitation intelligence" />
       <div>
         <h1>Your patients' shoulder rehab, measured between visits.</h1>
         <div className="auth-points">
@@ -111,7 +107,7 @@ export function Login() {
   const { email: signedIn, clinician, reload } = useData();
   const nav = useNavigate();
   if (signedIn && clinician) return <Navigate to="/" replace />;
-  if (signedIn && !clinician) return <Navigate to="/signup" replace />;
+  if (signedIn && !clinician) return <Navigate to="/signup" replace state={{ noAccount: true }} />;
   return (
     <div className="auth">
       <BrandPanel />

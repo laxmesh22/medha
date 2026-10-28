@@ -18,7 +18,7 @@ const css = [...html.matchAll(/<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]
 const safeJs = js.join("\n").replace(/<\/script/gi, "<\/script").replace(/<!--/g, "<\!--");
 const page = `<title>Auri Clinician Design</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@500&family=Noto+Sans:wght@400;700&display=swap">
 <style>
 html, body { background: #fafaf7; color: #1a1a1a; }
 ${css.join("\n")}
