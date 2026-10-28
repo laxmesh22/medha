@@ -111,7 +111,7 @@ export function Login() {
   const { email: signedIn, clinician, reload } = useData();
   const nav = useNavigate();
   if (signedIn && clinician) return <Navigate to="/" replace />;
-  if (signedIn && !clinician) return <Navigate to="/signup" replace />;
+  if (signedIn && !clinician) return <Navigate to="/signup" replace state={{ noAccount: true }} />;
   return (
     <div className="auth">
       <BrandPanel />

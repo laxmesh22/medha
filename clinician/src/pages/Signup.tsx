@@ -1,7 +1,7 @@
-import { Check, Copy } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { AlertCircle, Check, Copy } from "lucide-react";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useData } from "../lib/store";
 import type { ClinicianInput } from "../lib/types";
@@ -26,6 +26,8 @@ function Stepper({ step }: { step: number }) {
 export function Signup() {
   const { email, user, clinician, reload, setClinician } = useData();
   const nav = useNavigate();
+  // signed in (Google / email) but no doctor profile yet: sent here from the sign-in page or the dashboard
+  const noAccount = Boolean((useLocation().state as { noAccount?: boolean } | null)?.noAccount);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<ClinicianInput>(() => emptyClinicianInput(user?.name));
   const [agree, setAgree] = useState({ registered: false, data: false });
@@ -84,6 +86,12 @@ export function Signup() {
 
           {current === 1 ? (
             <form className="stack" style={{ gap: 16 }} onSubmit={toConfirm}>
+              {noAccount ? (
+                <div className="alert" role="alert">
+                  <AlertCircle size={18} />
+                  <span><b>No account found</b>{user?.email ? <> for {user.email}</> : null}. Please sign up: fill in your details below to create your doctor account, or use another account.</span>
+                </div>
+              ) : null}
               <div>
                 <h1>Your professional details</h1>
                 <p className="ink2" style={{ margin: "6px 0 0" }}>

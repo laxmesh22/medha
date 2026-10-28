@@ -202,6 +202,8 @@ h3 { font-size: 15px; font-weight: 600; }
 .note { background: var(--teal-wash); border: 1px solid var(--teal-soft); color: var(--teal-strong); border-radius: 12px; padding: 12px 14px; font-size: 13.5px; }
 .warn-note { background: #fff6e2; border: 1px solid #f6dfa6; color: var(--warning-ink); border-radius: 12px; padding: 12px 14px; font-size: 13.5px; }
 .error { color: var(--critical-ink); font-size: 13.5px; }
+.alert { display: flex; gap: 10px; align-items: flex-start; background: #fbe7e7; border: 1px solid #f1c2c2; color: var(--critical-ink); border-radius: 12px; padding: 12px 14px; font-size: 14px; }
+.alert svg { flex: 0 0 auto; margin-top: 1px; }
 .plan-table input, .plan-table select { width: 100%; }
 .plan-table td { padding: 8px 8px; }
 .plan-table th { padding: 10px 8px; }
