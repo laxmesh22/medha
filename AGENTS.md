@@ -22,7 +22,8 @@ schedule). Showcase: 31 Oct 2026, IIT Bombay. ML specifics: `ml/README.md`.
 7. Test recording sessions go to a scratch `--dataset-dir`, never `ml/data/real` (that folder is training data).
 
 ## Now working on
-- (empty)
+- Claude Code: clinician (physio) dashboard in a new `clinician/` app (React + Supabase): referral-code linking,
+  patients, care-plan prescribing, progress charts. Schema in `clinician/supabase/`. Not touching hub/, ml/, web/.
 
 ## Log
 ### 2026-10-14 22:57 · Claude Code (session "Agent handoff with OpenCV gesture tracking")
