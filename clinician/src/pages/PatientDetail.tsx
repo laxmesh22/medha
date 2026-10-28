@@ -1,9 +1,10 @@
-import { ArrowLeft, ClipboardList, History, MessageSquare, Plus, Stethoscope, Trash2, TrendingUp, Table2 } from "lucide-react";
+import { ArrowLeft, ClipboardList, History, Plus, Stethoscope, Trash2, TrendingUp, Table2, Video } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { AdherenceChart, PainChart, RomChart } from "../components/charts";
 import { TopBar } from "../components/Layout";
 import { Avatar, Empty, Meter, StatTile, StatusBadge } from "../components/ui";
+import { JoinCallLink, upcomingCalls, VideoConsult, whenLabel } from "../components/VideoConsult";
 import { api } from "../lib/api";
 import { deg, FLAG_LABELS, fmtDate, fmtDateTime, pct, relativeDay, type PatientSummary } from "../lib/stats";
 import { useData } from "../lib/store";
@@ -14,13 +15,13 @@ const TABS = [
   { id: "plan", label: "Care plan", icon: ClipboardList },
   { id: "sessions", label: "Sessions", icon: Table2 },
   { id: "medical", label: "Medical info", icon: Stethoscope },
-  { id: "messages", label: "Messages", icon: MessageSquare },
+  { id: "video", label: "Video calls", icon: Video },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
 export function PatientDetail() {
   const { id } = useParams();
-  const { summaries } = useData();
+  const { summaries, calls } = useData();
   const [params, setParams] = useSearchParams();
   const tab = (params.get("tab") as TabId) || "progress";
   const s = summaries.find((x) => x.patient.id === id);
@@ -33,6 +34,7 @@ export function PatientDetail() {
     );
   }
   const p = s.patient;
+  const next = upcomingCalls(calls, p.id)[0];
   return (
     <>
       <TopBar>
@@ -49,9 +51,17 @@ export function PatientDetail() {
               </div>
               <div className="muted" style={{ marginTop: 2, fontSize: 13 }}>Linked {fmtDate(p.consent_at)} · {p.phone ?? "no phone"}</div>
             </div>
-            <div className="row wrap" style={{ marginLeft: "auto" }}>
-              {s.alerts.length ? s.alerts.map((a) => <StatusBadge key={a.label} severity={a.severity} label={a.label} />)
-                : <StatusBadge severity="good" label="On track" />}
+            <div className="stack" style={{ marginLeft: "auto", gap: 10, alignItems: "flex-end" }}>
+              <div className="row wrap" style={{ justifyContent: "flex-end" }}>
+                {s.alerts.length ? s.alerts.map((a) => <StatusBadge key={a.label} severity={a.severity} label={a.label} />)
+                  : <StatusBadge severity="good" label="On track" />}
+              </div>
+              <div className="row wrap" style={{ justifyContent: "flex-end" }}>
+                {next ? <button className="chip" style={{ border: 0, cursor: "pointer" }} onClick={() => setParams({ tab: "video" })}>
+                  <Video size={13} />Next call: {whenLabel(next.scheduled_for!)}</button> : null}
+                <JoinCallLink patient={p} call={next && Math.abs(Date.parse(next.scheduled_for!) - Date.now()) < 1_800_000 ? next : undefined}
+                  label="Video call" small />
+              </div>
             </div>
           </div>
         </div>
@@ -69,11 +79,10 @@ export function PatientDetail() {
         {tab === "plan" ? <Plan s={s} /> : null}
         {tab === "sessions" ? <Sessions s={s} /> : null}
         {tab === "medical" ? <Medical s={s} /> : null}
-        {tab === "messages" ? (
-          <div className="card card-pad">
-            <h2>Messages</h2>
-            <p className="ink2">Messaging with {p.full_name.split(" ")[0]} is not part of this release. Until it is, contact the patient by
-              phone{p.phone ? <> at <b>{p.phone}</b></> : null}.</p>
+        {tab === "video" ? (
+          <div className="stack">
+            <VideoConsult patient={p} />
+            <div className="muted" style={{ fontSize: 13 }}>Text messaging is not part of this release{p.phone ? <>; the patient's phone is <b>{p.phone}</b></> : null}.</div>
           </div>
         ) : null}
       </div>

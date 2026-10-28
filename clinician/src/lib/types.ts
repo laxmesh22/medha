@@ -29,6 +29,7 @@ export interface Patient {
   notes: string | null;
   created_at: string;
   consent_at: string; // when the patient linked to this clinician
+  video_room: string; // private video-consult room for this patient and clinician
 }
 
 export type Metric = "elevation" | "rotation";
@@ -87,6 +88,17 @@ export interface Session {
   exercises: SessionExercise[];
 }
 
+export interface VideoCall {
+  id: string;
+  patient_id: string;
+  scheduled_for: string | null; // null = started straight away
+  duration_min: number;
+  status: "scheduled" | "started" | "cancelled";
+  started_at: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface ClinicianInput {
   full_name: string;
   title: string;
@@ -112,4 +124,8 @@ export interface Api {
   listPlans(patientId?: string): Promise<CarePlan[]>; // all versions, newest first
   publishPlan(patientId: string, notes: string, items: PlanItem[]): Promise<CarePlan>;
   listSessions(sinceDays: number, patientId?: string): Promise<Session[]>; // newest first
+  listCalls(patientId?: string): Promise<VideoCall[]>;
+  scheduleCall(patientId: string, when: string, minutes: number, notes: string): Promise<VideoCall>;
+  startCall(patientId: string, scheduledId?: string): Promise<VideoCall>; // logs the call as started
+  cancelCall(id: string): Promise<void>;
 }

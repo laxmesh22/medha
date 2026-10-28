@@ -2,7 +2,7 @@
 // Row-level security does the access control: these queries only ever return the signed-in clinician's patients.
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Api, CarePlan, Clinician, Patient, PlanItem, Session } from "./types";
+import type { Api, CarePlan, Clinician, Patient, PlanItem, Session, VideoCall } from "./types";
 
 const DAY = 86_400_000;
 
@@ -71,9 +71,11 @@ export function supabaseApi(url: string, anonKey: string): Api {
     },
     async listPatients() {
       const id = await uid();
-      const rows = must(await sb.from("care_links").select("consent_at, patients(*)").eq("clinician_id", id)
-        .eq("status", "active")) as unknown as { consent_at: string; patients: Omit<Patient, "consent_at"> | null }[];
-      return rows.filter((r) => r.patients).map((r) => ({ ...r.patients!, conditions: r.patients!.conditions ?? [], consent_at: r.consent_at }));
+      const rows = must(await sb.from("care_links").select("consent_at, video_room, patients(*)").eq("clinician_id", id)
+        .eq("status", "active")) as unknown as { consent_at: string; video_room: string; patients: Omit<Patient, "consent_at" | "video_room"> | null }[];
+      return rows.filter((r) => r.patients).map((r) => ({
+        ...r.patients!, conditions: r.patients!.conditions ?? [], consent_at: r.consent_at, video_room: r.video_room,
+      }));
     },
     async getPatient(id) {
       return (await this.listPatients()).find((p) => p.id === id) ?? null;
@@ -101,6 +103,29 @@ export function supabaseApi(url: string, anonKey: string): Api {
           median_deg: e.median_deg === null ? null : Number(e.median_deg), flags: e.flags ?? [],
         })),
       }));
+    },
+    async listCalls(patientId) {
+      let q = sb.from("video_calls").select("*").order("created_at", { ascending: false });
+      if (patientId) q = q.eq("patient_id", patientId);
+      return must(await q) as VideoCall[];
+    },
+    async scheduleCall(patientId, when, minutes, notes) {
+      return must(await sb.from("video_calls").insert({
+        patient_id: patientId, clinician_id: await uid(), scheduled_for: when, duration_min: minutes, notes: notes || null,
+      }).select().single()) as VideoCall;
+    },
+    async startCall(patientId, scheduledId) {
+      const now = new Date().toISOString();
+      if (scheduledId) {
+        return must(await sb.from("video_calls").update({ status: "started", started_at: now }).eq("id", scheduledId)
+          .select().single()) as VideoCall;
+      }
+      return must(await sb.from("video_calls").insert({
+        patient_id: patientId, clinician_id: await uid(), status: "started", started_at: now,
+      }).select().single()) as VideoCall;
+    },
+    async cancelCall(id) {
+      must(await sb.from("video_calls").update({ status: "cancelled" }).eq("id", id));
     },
   };
 }

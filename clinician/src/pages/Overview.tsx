@@ -1,13 +1,15 @@
-import { Activity, CalendarCheck, HeartPulse, Users } from "lucide-react";
+import { Activity, CalendarCheck, HeartPulse, Users, Video } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AdherenceChart } from "../components/charts";
 import { TopBar } from "../components/Layout";
 import { Avatar, Empty, StatTile, StatusBadge } from "../components/ui";
+import { JoinCallLink, upcomingCalls, whenLabel } from "../components/VideoConsult";
 import { fmtDateTime, relativeDay } from "../lib/stats";
 import { useData } from "../lib/store";
 
 export function Overview() {
-  const { clinician, summaries, sessions, patients } = useData();
+  const { clinician, summaries, sessions, patients, calls } = useData();
+  const upcoming = upcomingCalls(calls).slice(0, 4);
   const nav = useNavigate();
   const now = Date.now();
   const week = sessions.filter((s) => now - Date.parse(s.started_at) < 7 * 86_400_000);
@@ -40,7 +42,7 @@ export function Overview() {
             sub={`${attention.filter((s) => s.status === "critical" || s.status === "serious").length} with pain alerts`} />
         </div>
 
-        <div className="grid" style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1fr)", alignItems: "start" }}>
+        <div className="grid split">
           <div className="stack">
             <div className="card">
               <div className="card-head">
@@ -77,6 +79,35 @@ export function Overview() {
             </div>
           </div>
           <div className="stack">
+            <div className="card">
+              <div className="card-head">
+                <div>
+                  <h2>Video calls</h2>
+                  <p>Booked consults, soonest first</p>
+                </div>
+                <Video size={18} className="muted" />
+              </div>
+              <div className="list" style={{ marginTop: 10 }}>
+                {upcoming.length === 0 ? <Empty>No calls booked.</Empty> : null}
+                {upcoming.map((c) => {
+                  const p = patients.find((x) => x.id === c.patient_id);
+                  if (!p) return null;
+                  const soon = Math.abs(Date.parse(c.scheduled_for!) - Date.now()) < 30 * 60_000;
+                  return (
+                    <div key={c.id} className="list-row">
+                      <div style={{ minWidth: 0, cursor: "pointer" }} onClick={() => nav(`/patients/${p.id}?tab=video`)}>
+                        <div style={{ fontWeight: 600, fontSize: 14 }}>{p.full_name}</div>
+                        <div className="muted" style={{ fontSize: 12.5 }}>{whenLabel(c.scheduled_for!)} · {c.duration_min} min</div>
+                      </div>
+                      <div style={{ marginLeft: "auto" }}>
+                        {soon ? <JoinCallLink patient={p} call={c} label="Join" small />
+                          : <button className="btn ghost small" onClick={() => nav(`/patients/${p.id}?tab=video`)}>Open</button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
             <div className="card">
               <div className="card-head">
                 <div>

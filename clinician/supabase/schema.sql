@@ -2,8 +2,9 @@
 -- Run once in the Supabase SQL editor (or `supabase db push`). Safe to re-run: objects are created if missing.
 --
 -- Who writes what
---   clinician dashboard : clinicians (own row, via create_clinician_profile), care_plans + plan_items
---   patient app         : patients (own row), link via link_patient_with_code(code), sessions + session_exercises
+--   clinician dashboard : clinicians (own row, via create_clinician_profile), care_plans + plan_items, video_calls
+--   patient app         : patients (own row), link via link_patient_with_code(code), sessions + session_exercises;
+--                         reads its care_links.video_room and video_calls to join consults
 --   both read           : exercises (library)
 -- Row-level security: a clinician sees only patients linked to them (active care_link); a patient sees only their
 -- own rows and their own plans. Degrees in sessions come from the device's geometry, never typed by the patient.
@@ -110,7 +111,25 @@ create table if not exists public.session_exercises (
   flags          text[] default '{}'          -- e.g. {'TRUNK_LEAN_LATERAL','ELBOW_DRIFT'}
 );
 
+-- Video consults. Each care link has its own unguessable room name; the call itself runs on the video provider
+-- (Jitsi Meet by default, VITE_VIDEO_BASE_URL in the apps). Both apps open https://<provider>/<video_room>.
+alter table public.care_links add column if not exists video_room text not null
+  default ('pb-' || encode(gen_random_bytes(9), 'hex'));
+
+create table if not exists public.video_calls (
+  id             uuid primary key default gen_random_uuid(),
+  patient_id     uuid not null references public.patients (id) on delete cascade,
+  clinician_id   uuid not null references public.clinicians (id) on delete cascade,
+  scheduled_for  timestamptz,                 -- null = started straight away
+  duration_min   int  not null default 15 check (duration_min between 5 and 120),
+  status         text not null default 'scheduled' check (status in ('scheduled', 'started', 'cancelled')),
+  started_at     timestamptz,
+  notes          text,
+  created_at     timestamptz not null default now()
+);
+
 create index if not exists sessions_patient_time on public.sessions (patient_id, started_at desc);
+create index if not exists video_calls_patient on public.video_calls (patient_id, scheduled_for desc);
 create index if not exists care_links_clinician on public.care_links (clinician_id) where status = 'active';
 create index if not exists plan_items_plan on public.plan_items (plan_id, position);
 
@@ -215,6 +234,7 @@ alter table public.care_plans        enable row level security;
 alter table public.plan_items        enable row level security;
 alter table public.sessions          enable row level security;
 alter table public.session_exercises enable row level security;
+alter table public.video_calls       enable row level security;
 
 drop policy if exists "clinician reads own" on public.clinicians;
 create policy "clinician reads own" on public.clinicians for select using (id = auth.uid());
@@ -263,6 +283,16 @@ drop policy if exists "session exercises readable" on public.session_exercises;
 create policy "session exercises readable" on public.session_exercises for select using (
   exists (select 1 from sessions s where s.id = session_exercises.session_id
           and (s.patient_id = auth.uid() or is_linked_clinician(s.patient_id))));
+
+drop policy if exists "call parties read" on public.video_calls;
+create policy "call parties read" on public.video_calls for select
+  using (patient_id = auth.uid() or clinician_id = auth.uid());
+drop policy if exists "clinician books calls" on public.video_calls;
+create policy "clinician books calls" on public.video_calls for insert
+  with check (clinician_id = auth.uid() and is_linked_clinician(patient_id));
+drop policy if exists "clinician updates calls" on public.video_calls;
+create policy "clinician updates calls" on public.video_calls for update using (clinician_id = auth.uid())
+  with check (clinician_id = auth.uid());
 
 grant execute on function public.create_clinician_profile(text, text, text, text, text) to authenticated;
 grant execute on function public.regenerate_referral_code() to authenticated;

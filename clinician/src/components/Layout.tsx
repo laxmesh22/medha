@@ -46,6 +46,15 @@ export function Layout() {
         </div>
       </aside>
       <main className="main">
+        <nav className="mobile-nav" aria-label="Sections">
+          <span className="brand-mark" aria-hidden>
+            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M7 23 L15 9 L25 23" stroke="currentColor" strokeWidth="3.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </span>
+          <NavLink to="/" end>Overview</NavLink>
+          <NavLink to="/patients">Patients</NavLink>
+          <NavLink to="/library">Library</NavLink>
+          <NavLink to="/profile">Code</NavLink>
+        </nav>
         <Outlet />
       </main>
     </div>

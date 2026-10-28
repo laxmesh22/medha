@@ -156,6 +156,14 @@ patients link with it from the patient app (Adi), prescribe exercises, see daily
 - Brand hex values are provisional (`--brand-*` in `src/styles.css`) until the team sends the exact codes.
 - No changes to hub/, ml/ or web/.
 
+### 2026-10-28 · Claude Code: dashboard video consults + shared preview
+- Video consults: each care link has its own `video_room`, and booked or started calls are stored in `video_calls`
+  (schema + RLS added to `clinician/supabase/schema.sql`). Calls open on Jitsi Meet in a new tab. Embedded meet.jit.si
+  calls are cut off after 5 minutes, and Artifact pages cannot use WebRTC. `VITE_VIDEO_BASE_URL` switches provider.
+- Patient app (Adi) should show booked calls and open `https://meet.jit.si/<video_room>`: see `clinician/README.md`.
+- `npm run artifact` builds a single-page demo (memory router, forced demo data). Published for the team at
+  https://claude.ai/artifact/AM5xVZhwJXXYh9MBM2YV4q (private until the owner shares it).
+
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
 `api/server.py`, `core/coach.py`, `__main__.py`): check `git diff` first and commit right after editing.

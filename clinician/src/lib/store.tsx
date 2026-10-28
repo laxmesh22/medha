@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "./api";
 import { summarize, SEVERITY_ORDER, type PatientSummary } from "./stats";
-import type { CarePlan, Clinician, Exercise, Patient, Session } from "./types";
+import type { CarePlan, Clinician, Exercise, Patient, Session, VideoCall } from "./types";
 
 export const HISTORY_DAYS = 42;
 
@@ -14,6 +14,7 @@ interface Data {
   patients: Patient[];
   plans: CarePlan[];
   sessions: Session[];
+  calls: VideoCall[];
   summaries: PatientSummary[]; // most urgent first
   exerciseName: (id: string) => string;
   reload: () => Promise<void>;
@@ -24,7 +25,7 @@ const Ctx = createContext<Data | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<Omit<Data, "summaries" | "exerciseName" | "reload" | "setClinician">>({
-    loading: true, error: null, email: null, clinician: null, exercises: [], patients: [], plans: [], sessions: [],
+    loading: true, error: null, email: null, clinician: null, exercises: [], patients: [], plans: [], sessions: [], calls: [],
   });
 
   const reload = useCallback(async () => {
@@ -39,11 +40,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setState((s) => ({ ...s, loading: false, error: null, email, clinician: null }));
         return;
       }
-      const [exercises, patients, plans, sessions] = await Promise.all([
-        api.listExercises(), api.listPatients(), api.listPlans(), api.listSessions(HISTORY_DAYS),
+      const [exercises, patients, plans, sessions, calls] = await Promise.all([
+        api.listExercises(), api.listPatients(), api.listPlans(), api.listSessions(HISTORY_DAYS), api.listCalls(),
       ]);
       sessions.sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at));
-      setState({ loading: false, error: null, email, clinician, exercises, patients, plans, sessions });
+      setState({ loading: false, error: null, email, clinician, exercises, patients, plans, sessions, calls });
     } catch (e) {
       setState((s) => ({ ...s, loading: false, error: e instanceof Error ? e.message : String(e) }));
     }

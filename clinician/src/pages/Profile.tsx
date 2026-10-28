@@ -85,7 +85,7 @@ export function Profile() {
             {api.mode === "demo" ? (
               <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Demo mode: plans you publish are kept in this browser.</div>
-                <button className="btn ghost small" onClick={() => { resetDemo(); window.location.assign("/"); }}>Reset demo data</button>
+                <button className="btn ghost small" onClick={() => { resetDemo(); window.location.reload(); }}>Reset demo data</button>
               </div>
             ) : null}
           </div>

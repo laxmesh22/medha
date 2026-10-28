@@ -2,7 +2,7 @@
 // All people are fictional. Sessions are generated deterministically relative to "now"; plan edits and the
 // referral code persist in this browser (localStorage) so a demo can show prescribing.
 
-import type { Api, CarePlan, Clinician, ClinicianInput, Exercise, Patient, PlanItem, Session, SessionExercise } from "./types";
+import type { Api, CarePlan, Clinician, ClinicianInput, Exercise, Patient, PlanItem, Session, SessionExercise, VideoCall } from "./types";
 
 export const EXERCISES: Exercise[] = [
   { id: "flexion", name: "Forward raise (flexion)", metric: "elevation", description: "Raise the straight arm forward and up, thumb leading.", default_sets: 2, default_reps: 10, default_hold: 3 },
@@ -13,7 +13,7 @@ export const EXERCISES: Exercise[] = [
 ];
 
 const DAY = 86_400_000;
-const STORE_KEY = "pb-clinician-demo-v1";
+const STORE_KEY = "pb-clinician-demo-v2";
 
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -33,7 +33,7 @@ const isoDaysAgo = (d: number, hour = 9) => {
 };
 
 interface Profile {
-  patient: Omit<Patient, "created_at" | "consent_at">;
+  patient: Omit<Patient, "created_at" | "consent_at" | "video_room">;
   linkedDaysAgo: number;
   /** adherence probability per planned day */
   adherence: number;
@@ -144,7 +144,27 @@ function sessionsFor(pr: Profile, plan: CarePlan | undefined): Session[] {
 interface Stored {
   clinician: Clinician;
   plans: CarePlan[];
+  calls: VideoCall[];
 }
+
+/** Stable, unguessable-looking room per patient (the real app gets a random one from the database). */
+function roomFor(id: string): string {
+  let h = 2166136261;
+  for (const c of `physio-buddy-demo:${id}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  let out = "";
+  for (let i = 0; i < 18; i++) {
+    h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+    out += "0123456789abcdef"[h & 15];
+  }
+  return `pb-${out}`;
+}
+
+const inHours = (h: number) => {
+  const t = new Date(Date.now() + h * 3_600_000);
+  t.setMinutes(t.getMinutes() < 30 ? 30 : 0, 0, 0);
+  if (t.getMinutes() === 0) t.setHours(t.getHours() + 1);
+  return t.toISOString();
+};
 
 function initialStore(): Stored {
   const clinician: Clinician = {
@@ -156,13 +176,24 @@ function initialStore(): Stored {
     notes: "Gentle range work below the pain-stop level; hold at the end of range.", created_at: isoDaysAgo(p.linkedDaysAgo),
     items: p.plan!,
   }));
-  return { clinician, plans };
+  const calls: VideoCall[] = [
+    { id: "call-arjun", patient_id: "p-arjun", scheduled_for: inHours(0), duration_min: 15, status: "scheduled", started_at: null,
+      notes: "Pain rising this week and trunk lean on side raises: review technique.", created_at: isoDaysAgo(0, 8) },
+    { id: "call-vikram", patient_id: "p-vikram", scheduled_for: inHours(20), duration_min: 30, status: "scheduled", started_at: null,
+      notes: "First consult: history, baseline range, set the plan.", created_at: isoDaysAgo(1, 10) },
+    { id: "call-meera", patient_id: "p-meera", scheduled_for: isoDaysAgo(6, 18), duration_min: 15, status: "started",
+      started_at: isoDaysAgo(6, 18), notes: "Weekly check-in. Night pain improving.", created_at: isoDaysAgo(8, 9) },
+  ];
+  return { clinician, plans, calls };
 }
 
 function load(): Stored {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) return JSON.parse(raw) as Stored;
+    if (raw) {
+      const s = JSON.parse(raw) as Stored;
+      if (Array.isArray(s.calls)) return s;
+    }
   } catch {
     /* private mode or blocked storage: fall back to the seed */
   }
@@ -190,7 +221,7 @@ export function demoApi(): Api {
   let signedIn = true;
   const listeners = new Set<() => void>();
   const patients: Patient[] = PROFILES.map((p) => ({
-    ...p.patient, created_at: isoDaysAgo(p.linkedDaysAgo + 1), consent_at: isoDaysAgo(p.linkedDaysAgo),
+    ...p.patient, created_at: isoDaysAgo(p.linkedDaysAgo + 1), consent_at: isoDaysAgo(p.linkedDaysAgo), video_room: roomFor(p.patient.id),
   }));
   // sessions follow each patient's first plan (generated once per page load)
   const sessions: Session[] = PROFILES.flatMap((p) =>
@@ -265,6 +296,34 @@ export function demoApi(): Api {
       const since = Date.now() - sinceDays * DAY;
       return sessions.filter((s) => (!patientId || s.patient_id === patientId) && Date.parse(s.started_at) >= since)
         .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at));
+    },
+    async listCalls(patientId) {
+      return store.calls.filter((c) => !patientId || c.patient_id === patientId);
+    },
+    async scheduleCall(patientId, when, minutes, notes) {
+      const call: VideoCall = { id: `call-${Date.now()}`, patient_id: patientId, scheduled_for: when, duration_min: minutes,
+        status: "scheduled", started_at: null, notes: notes || null, created_at: new Date().toISOString() };
+      store = { ...store, calls: [...store.calls, call] };
+      save(store);
+      return call;
+    },
+    async startCall(patientId, scheduledId) {
+      const now = new Date().toISOString();
+      let call = store.calls.find((c) => c.id === scheduledId);
+      if (call) {
+        call = { ...call, status: "started", started_at: now };
+        store = { ...store, calls: store.calls.map((c) => (c.id === call!.id ? call! : c)) };
+      } else {
+        call = { id: `call-${Date.now()}`, patient_id: patientId, scheduled_for: null, duration_min: 15, status: "started",
+          started_at: now, notes: null, created_at: now };
+        store = { ...store, calls: [...store.calls, call] };
+      }
+      save(store);
+      return call;
+    },
+    async cancelCall(id) {
+      store = { ...store, calls: store.calls.map((c) => (c.id === id ? { ...c, status: "cancelled" as const } : c)) };
+      save(store);
     },
   };
 }

@@ -102,7 +102,8 @@ h3 { font-size: 15px; font-weight: 600; }
 .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .span-2 { grid-column: span 2; }
-@media (max-width: 1100px) { .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-3, .grid-2 { grid-template-columns: 1fr; } .span-2 { grid-column: auto; } }
+.split { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 1100px) { .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grid-3, .grid-2, .split { grid-template-columns: 1fr; } .span-2 { grid-column: auto; } }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 10px; padding: 9px 16px; font-weight: 600;
@@ -216,4 +217,24 @@ h3 { font-size: 15px; font-weight: 600; }
 .auth-points div { display: flex; gap: 12px; align-items: flex-start; opacity: 0.9; }
 .auth-form { display: grid; place-items: center; padding: 40px; }
 .auth-card { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 16px; }
-@media (max-width: 900px) { .auth { grid-template-columns: 1fr; } .auth-brand { display: none; } .shell { grid-template-columns: 1fr; } .sidebar { display: none; } }
+.mobile-nav { display: none; }
+@media (max-width: 900px) {
+  .auth { grid-template-columns: 1fr; }
+  .auth-brand { display: none; }
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .mobile-nav {
+    display: flex; align-items: center; gap: 4px; overflow-x: auto; background: var(--teal); color: var(--on-teal);
+    padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .mobile-nav .brand-mark { width: 28px; height: 28px; border-radius: 8px; margin-right: 6px; flex: 0 0 auto; }
+  .mobile-nav a { padding: 7px 11px; border-radius: 9px; color: rgba(246, 245, 240, 0.82); font-weight: 560; white-space: nowrap; }
+  .mobile-nav a.active { background: rgba(246, 245, 240, 0.16); color: var(--on-teal); }
+  .topbar, .content { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .topbar { position: static; flex-wrap: wrap; }
+  .content { padding-block: 20px 40px; }
+  .kv { grid-template-columns: 1fr; gap: 2px 0; }
+  .kv dd { margin-bottom: 10px; }
+  h1 { font-size: 22px; }
+  .auth-form { padding-inline: max(16px, env(safe-area-inset-left, 0px)); }
+}
