@@ -177,6 +177,16 @@ patients link with it from the patient app (Adi), prescribe exercises, see daily
 - Patient app (Adi): insert the `patients` row after sign-in (`auth_sub` defaults from the token). The Auth0 setup
   steps are in `clinician/README.md`.
 
+### 2026-10-28 · Claude Code: device renamed to Auri, dashboard intro video
+- **The device is now called "Auri"** (user's decision). The clinician dashboard uses it everywhere: referral codes
+  are `AU-xxxxxx`, video rooms `au-…`, consult subject "Auri consult". The hub web UI, the earlier films, the CAD lid
+  labels (`PB-ARM`…) and the hub package name still say Physio Buddy / PB; not renamed yet.
+- `hardware/renders/auri_dashboard_intro.mp4` (54 s, 1080p, music): walkthrough of the dashboard (sign-up with
+  Google, referral code, overview, patients, range-of-motion charts, versioned care plan, video consult).
+  Remotion composition `AuriIntro` (`video/src/intro/`). Screens are captured from the demo build with
+  `video/scripts/capture_dashboard.mjs` (dev server on 5175 + chrome-headless-shell); music
+  `tools/audio/make_soundtrack.py --intro 58`.
+
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
 `api/server.py`, `core/coach.py`, `__main__.py`): check `git diff` first and commit right after editing.

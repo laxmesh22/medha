@@ -7,7 +7,8 @@
     12-30 s  main: the patient appears; kick, hats, clap, bass under the same chords
     30-35 s  outro: drums out, last chord rings into the reverb, fade
 Also writes whoosh.wav (scene transitions), click.wav (PB-rail latch) and tick.wav (callouts).
-`--guide SECONDS` instead writes guide_bgm.wav (calm bed for the assembly guide) and chime.wav (new step).
+`--guide SECONDS` instead writes guide_bgm.wav (calm bed for the assembly guide) and chime.wav (new step);
+`--intro SECONDS` writes intro_bgm.wav (dashboard intro video).
 """
 
 import argparse
@@ -334,6 +335,25 @@ def guide_track(seconds):
     return L, R
 
 
+def intro_track(seconds):
+    """Product walkthrough bed: pad + arpeggio from the start, a light beat and bass from 4 s, outro from 6 s before
+    the end. Calmer than the film, livelier than the assembly guide."""
+    total = int(seconds * SR)
+    start, stop = 4.0, max(8.0, seconds - 6.0)
+    pl, pr = pad(total)
+    al, ar = arp(total, step=BEAT / 4, gain=0.13)
+    dl, dr, duck = drums(total, start, stop)
+    b = bass(total, start, stop)
+    ml, mr = reverb(pl + al, pr + ar, mix=0.35)
+    duck = 1 - (1 - duck) * 0.6                      # gentler sidechain than the film
+    L = ml * duck + 0.55 * dl + 0.8 * b * duck
+    R = mr * duck + 0.55 * dr + 0.8 * b * duck
+    t = np.arange(total) / SR
+    fade = np.clip((seconds - t) / 3.0, 0, 1) * np.clip(t / 0.8, 0, 1)
+    L, R = np.tanh(L * fade * 1.3) / 1.3, np.tanh(R * fade * 1.3) / 1.3
+    return L, R
+
+
 def chime():
     """Soft two-partial bell for each new step."""
     n = int(1.2 * SR)
@@ -348,8 +368,12 @@ def main():
     ap.add_argument("--out", default="video/public/audio")
     ap.add_argument("--seconds", type=float, default=35.0)
     ap.add_argument("--guide", type=float, default=0.0, help="also write guide_bgm.wav of this length + chime.wav")
+    ap.add_argument("--intro", type=float, default=0.0, help="write intro_bgm.wav (dashboard intro video) of this length")
     a = ap.parse_args()
     out = Path(a.out)
+    if a.intro:
+        write_wav(out / "intro_bgm.wav", *intro_track(a.intro), peak_db=-2)
+        return
     if a.guide:
         write_wav(out / "guide_bgm.wav", *guide_track(a.guide), peak_db=-3)
         write_wav(out / "chime.wav", *chime(), peak_db=-6)

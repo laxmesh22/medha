@@ -11,3 +11,5 @@ public/footage
 public/guide/footage
 public/guide/stills
 public/audio/guide_bgm.wav
+# regenerate: tools/audio/make_soundtrack.py --intro 58
+public/audio/intro_bgm.wav
