@@ -29,6 +29,38 @@ camera and microphone check before joining. The physio may be asked to sign in o
 (in-memory routing, no backend access), published as a claude.ai Artifact for the team. Video calls work from it
 (they open in a new tab); real patient data needs the deployed app with Supabase.
 
+## Sign-in and doctor sign-up
+- **Sign in** (`/login`): *Continue with Google* or *Continue with email*.
+- **New doctor sign-up** (`/signup`), three steps:
+  1. Account: Google or email.
+  2. Professional details: name, qualification, specialisation, clinic, city, registering council, registration
+     number, experience, phone.
+  3. Confirm two declarations.
+
+  The doctor then gets their referral code and QR. `verification_status` starts as `pending` until the team checks
+  the registration number.
+- Sign-in runs on **Auth0** when `VITE_AUTH0_DOMAIN` and `VITE_AUTH0_CLIENT_ID` are set. Without them it uses
+  Supabase's own auth (email + password, Google). The demo build simulates both.
+
+### Set up Auth0 (Google sign-in)
+1. Auth0 dashboard → Applications → **Create Application** → *Single Page Application*. Under Settings, add your
+   URLs (`http://localhost:5175` and the deployed URL) to *Allowed Callback URLs*, *Allowed Logout URLs* and *Allowed
+   Web Origins*. Copy the domain and client ID into `.env`.
+2. Authentication → Social → **Google** (`google-oauth2`): enable it for the application. For production, use your
+   own Google OAuth client ID and secret; Auth0's development keys are for testing only.
+3. Actions → Library → **Create Action** (*Login / Post Login*), then deploy it and add it to the Login flow:
+   ```js
+   exports.onExecutePostLogin = async (event, api) => {
+     api.idToken.setCustomClaim("role", "authenticated");
+   };
+   ```
+   Supabase picks the Postgres role from this claim. It must be on the **ID token**: Auth0 drops un-namespaced claims
+   from access tokens.
+4. Supabase dashboard → Authentication → **Third-party Auth** → add **Auth0** with your tenant ID (and region if
+   the tenant has one).
+5. The dashboard sends Auth0's ID token to Supabase on every request. The database identifies people by the token's
+   `sub` (`current_sub()` in `schema.sql`), so Auth0 and Supabase-auth users both work. The patient app can use either.
+
 ## Connect Supabase
 1. Create a project, open the SQL editor and run `supabase/schema.sql` (tables, row-level security, functions,
    exercise library). Re-running it is safe.
@@ -41,7 +73,7 @@ linked to them, and a patient only their own rows.
 
 | Step | Patient app does | Dashboard sees |
 |---|---|---|
-| Sign up | Supabase Auth, then insert its own `patients` row (`id = auth.uid()`) | nothing yet |
+| Sign up | Sign in (Auth0 or Supabase auth), then insert its own `patients` row (`auth_sub` fills itself from the token) | nothing yet |
 | Link | `rpc('link_patient_with_code', { p_code })` after the patient agrees to share | patient in the list, `consent_at` |
 | Plan | read `care_plans` (`status = 'active'`) + `plan_items` | the clinician writes them via `publish_care_plan` |
 | Session | insert `sessions` + `session_exercises` after each session | progress charts, adherence, alerts |

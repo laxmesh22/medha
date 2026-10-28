@@ -164,6 +164,19 @@ patients link with it from the patient app (Adi), prescribe exercises, see daily
 - `npm run artifact` builds a single-page demo (memory router, forced demo data). Published for the team at
   https://claude.ai/artifact/AM5xVZhwJXXYh9MBM2YV4q (private until the owner shares it).
 
+### 2026-10-28 · Claude Code: Auth0 + Google sign-in, new doctor sign-up
+- `clinician/`: Auth0 SPA sign-in (Google via the `google-oauth2` connection, email via Auth0's hosted page). It
+  falls back to Supabase auth (email + Google) when Auth0 is not configured. New `/signup` page with 3 steps
+  (account, professional details, confirm), ending with the referral code.
+- **Schema change** (`clinician/supabase/schema.sql`, not yet run anywhere):
+  - People are identified by the token's `sub` via `current_sub()`, `my_clinician_id()` and `my_patient_id()`.
+  - `clinicians` and `patients` have their own uuid ids plus `auth_sub`, and no longer reference `auth.users`.
+  - Auth0 subs are not UUIDs, so `auth.uid()` is gone.
+  - `create_clinician_profile` now takes one jsonb argument.
+  - New doctor fields: specialization, city, council, years_experience, email, verification_status.
+- Patient app (Adi): insert the `patients` row after sign-in (`auth_sub` defaults from the token). The Auth0 setup
+  steps are in `clinician/README.md`.
+
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
 `api/server.py`, `core/coach.py`, `__main__.py`): check `git diff` first and commit right after editing.

@@ -209,6 +209,20 @@ h3 { font-size: 15px; font-weight: 600; }
 .big-code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 34px; font-weight: 750; letter-spacing: 0.08em; color: var(--teal); }
 
 /* ---------------------------------------------------------------- auth */
+.btn.google { background: #fff; color: #1f1f1f; border-color: var(--line-strong); }
+.btn.google:hover { background: #f7f8f8; }
+.divider { display: flex; align-items: center; gap: 12px; color: var(--ink-3); font-size: 12.5px; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.stepper { list-style: none; margin: 0 0 4px; padding: 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.stepper li { display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 13px; font-weight: 560; }
+.stepper li + li::before { content: ""; width: 22px; height: 1px; background: var(--line-strong); }
+.stepper .dot { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--line-strong); font-size: 12px; }
+.stepper li.current { color: var(--teal); }
+.stepper li.current .dot { border-color: var(--teal); background: var(--teal-wash); }
+.stepper li.done { color: var(--ink-2); }
+.stepper li.done .dot { background: var(--teal); border-color: var(--teal); color: var(--on-teal); }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--ink-2); cursor: pointer; }
+.check input { margin-top: 3px; accent-color: var(--teal); width: 16px; height: 16px; flex: 0 0 auto; }
 .auth { min-height: 100vh; display: grid; grid-template-columns: 1.05fr 1fr; }
 .auth-brand { background: var(--teal); color: var(--on-teal); padding: 56px; display: flex; flex-direction: column; justify-content: space-between; }
 .auth-brand h1 { font-size: 40px; line-height: 1.08; max-width: 520px; }

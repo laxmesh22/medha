@@ -8,23 +8,39 @@
 --   both read           : exercises (library)
 -- Row-level security: a clinician sees only patients linked to them (active care_link); a patient sees only their
 -- own rows and their own plans. Degrees in sessions come from the device's geometry, never typed by the patient.
+--
+-- Sign-in: Auth0 (Google or email) as a Supabase third-party provider, or Supabase's own auth. People are identified
+-- by the token's `sub` claim (Auth0 subs such as 'google-oauth2|1234' are not UUIDs, so auth.uid() cannot be used).
+-- Auth0 needs a post-login Action that adds the claim role = 'authenticated' to the ID token (see README).
 
 create extension if not exists pgcrypto;
 
+-- The signed-in person's token subject (Auth0 or Supabase auth).
+create or replace function public.current_sub() returns text
+language sql stable as $$ select coalesce(auth.jwt() ->> 'sub', auth.uid()::text) $$;
+
 -- ------------------------------------------------------------------------------------------- tables
 create table if not exists public.clinicians (
-  id               uuid primary key references auth.users (id) on delete cascade,
-  full_name        text not null,
-  title            text default 'Physiotherapist',
-  clinic           text,
-  registration_no  text,
-  phone            text,
-  referral_code    text not null unique,
-  created_at       timestamptz not null default now()
+  id                   uuid primary key default gen_random_uuid(),
+  auth_sub             text not null unique default public.current_sub(),
+  email                text,
+  full_name            text not null,
+  title                text default 'Physiotherapist',
+  specialization       text,                 -- e.g. 'Musculoskeletal', 'Sports', 'Neuro'
+  clinic               text,
+  city                 text,
+  council              text,                 -- registering council / association
+  registration_no      text,
+  years_experience     int check (years_experience between 0 and 70),
+  phone                text,
+  referral_code        text not null unique,
+  verification_status  text not null default 'pending' check (verification_status in ('pending', 'verified', 'rejected')),
+  created_at           timestamptz not null default now()
 );
 
 create table if not exists public.patients (
-  id                   uuid primary key references auth.users (id) on delete cascade,
+  id                   uuid primary key default gen_random_uuid(),
+  auth_sub             text not null unique default public.current_sub(),
   full_name            text not null,
   date_of_birth        date,
   sex                  text check (sex in ('female', 'male', 'other', 'prefer_not_to_say')),
@@ -134,9 +150,19 @@ create index if not exists care_links_clinician on public.care_links (clinician_
 create index if not exists plan_items_plan on public.plan_items (plan_id, position);
 
 -- ------------------------------------------------------------------------------------------- helpers
+create or replace function public.my_clinician_id() returns uuid
+language sql stable security definer set search_path = public as $$
+  select id from clinicians where auth_sub = current_sub()
+$$;
+
+create or replace function public.my_patient_id() returns uuid
+language sql stable security definer set search_path = public as $$
+  select id from patients where auth_sub = current_sub()
+$$;
+
 create or replace function public.is_linked_clinician(p uuid) returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (select 1 from care_links where patient_id = p and clinician_id = auth.uid() and status = 'active')
+  select exists (select 1 from care_links where patient_id = p and clinician_id = my_clinician_id() and status = 'active')
 $$;
 
 -- 8-character referral code without look-alike characters (no 0/O, 1/I/L)
@@ -156,20 +182,24 @@ begin
   return code;
 end $$;
 
--- Clinician onboarding: creates (or updates) the caller's clinician row and returns it.
-create or replace function public.create_clinician_profile(p_full_name text, p_clinic text, p_registration_no text,
-                                                           p_phone text, p_title text default 'Physiotherapist')
-returns public.clinicians
+-- Doctor sign-up / profile edit: creates (or updates) the caller's clinician row and returns it. The referral code is
+-- created on first save; verification_status stays 'pending' until the team checks the registration.
+create or replace function public.create_clinician_profile(p jsonb) returns public.clinicians
 language plpgsql security definer set search_path = public as $$
 declare
   row clinicians;
 begin
-  if auth.uid() is null then raise exception 'not signed in'; end if;
-  insert into clinicians (id, full_name, title, clinic, registration_no, phone, referral_code)
-  values (auth.uid(), p_full_name, coalesce(p_title, 'Physiotherapist'), p_clinic, p_registration_no, p_phone,
-          new_referral_code())
-  on conflict (id) do update set full_name = excluded.full_name, title = excluded.title, clinic = excluded.clinic,
-                                 registration_no = excluded.registration_no, phone = excluded.phone
+  if current_sub() is null then raise exception 'not signed in'; end if;
+  if coalesce(trim(p->>'full_name'), '') = '' then raise exception 'full name is required'; end if;
+  insert into clinicians (auth_sub, email, full_name, title, specialization, clinic, city, council, registration_no,
+                          years_experience, phone, referral_code)
+  values (current_sub(), auth.jwt() ->> 'email', p->>'full_name', coalesce(nullif(p->>'title', ''), 'Physiotherapist'),
+          p->>'specialization', p->>'clinic', p->>'city', p->>'council', p->>'registration_no',
+          nullif(p->>'years_experience', '')::int, p->>'phone', new_referral_code())
+  on conflict (auth_sub) do update set
+    full_name = excluded.full_name, title = excluded.title, specialization = excluded.specialization,
+    clinic = excluded.clinic, city = excluded.city, council = excluded.council, registration_no = excluded.registration_no,
+    years_experience = excluded.years_experience, phone = excluded.phone, email = coalesce(excluded.email, clinicians.email)
   returning * into row;
   return row;
 end $$;
@@ -179,7 +209,7 @@ language plpgsql security definer set search_path = public as $$
 declare
   code text := new_referral_code();
 begin
-  update clinicians set referral_code = code where id = auth.uid();
+  update clinicians set referral_code = code where auth_sub = current_sub();
   if not found then raise exception 'no clinician profile'; end if;
   return code;
 end $$;
@@ -189,13 +219,14 @@ create or replace function public.link_patient_with_code(p_code text) returns uu
 language plpgsql security definer set search_path = public as $$
 declare
   c uuid;
+  me uuid := my_patient_id();
 begin
-  if auth.uid() is null then raise exception 'not signed in'; end if;
-  if not exists (select 1 from patients where id = auth.uid()) then raise exception 'create the patient profile first'; end if;
+  if current_sub() is null then raise exception 'not signed in'; end if;
+  if me is null then raise exception 'create the patient profile first'; end if;
   select id into c from clinicians where referral_code = upper(trim(p_code));
   if c is null then raise exception 'unknown code'; end if;
   insert into care_links (patient_id, clinician_id, status, consent_at)
-  values (auth.uid(), c, 'active', now())
+  values (me, c, 'active', now())
   on conflict (patient_id, clinician_id) do update set status = 'active', consent_at = now();
   return c;
 end $$;
@@ -213,7 +244,7 @@ begin
   select coalesce(max(version), 0) + 1 into v from care_plans where patient_id = p_patient;
   update care_plans set status = 'superseded' where patient_id = p_patient and status = 'active';
   insert into care_plans (patient_id, clinician_id, version, status, notes)
-  values (p_patient, auth.uid(), v, 'active', p_notes) returning id into plan;
+  values (p_patient, my_clinician_id(), v, 'active', p_notes) returning id into plan;
   for it in select * from jsonb_array_elements(p_items) loop
     insert into plan_items (plan_id, exercise_id, sets, reps, hold_s, times_per_day, days_per_week, rom_target_deg,
                             pain_stop, notes, position)
@@ -237,64 +268,65 @@ alter table public.session_exercises enable row level security;
 alter table public.video_calls       enable row level security;
 
 drop policy if exists "clinician reads own" on public.clinicians;
-create policy "clinician reads own" on public.clinicians for select using (id = auth.uid());
+create policy "clinician reads own" on public.clinicians for select using (auth_sub = current_sub());
 drop policy if exists "clinician updates own" on public.clinicians;
-create policy "clinician updates own" on public.clinicians for update using (id = auth.uid())
-  with check (id = auth.uid());
+create policy "clinician updates own" on public.clinicians for update using (auth_sub = current_sub())
+  with check (auth_sub = current_sub());
 drop policy if exists "patient reads linked clinician" on public.clinicians;
 create policy "patient reads linked clinician" on public.clinicians for select using (
-  exists (select 1 from care_links l where l.clinician_id = clinicians.id and l.patient_id = auth.uid()));
+  exists (select 1 from care_links l where l.clinician_id = clinicians.id and l.patient_id = my_patient_id()));
 
 drop policy if exists "patient owns profile" on public.patients;
-create policy "patient owns profile" on public.patients for all using (id = auth.uid()) with check (id = auth.uid());
+create policy "patient owns profile" on public.patients for all using (auth_sub = current_sub())
+  with check (auth_sub = current_sub());
 drop policy if exists "clinician reads linked patients" on public.patients;
 create policy "clinician reads linked patients" on public.patients for select using (is_linked_clinician(id));
 
 drop policy if exists "link parties read" on public.care_links;
 create policy "link parties read" on public.care_links for select
-  using (patient_id = auth.uid() or clinician_id = auth.uid());
+  using (patient_id = my_patient_id() or clinician_id = my_clinician_id());
 drop policy if exists "clinician ends link" on public.care_links;
-create policy "clinician ends link" on public.care_links for update using (clinician_id = auth.uid())
-  with check (clinician_id = auth.uid());
+create policy "clinician ends link" on public.care_links for update using (clinician_id = my_clinician_id())
+  with check (clinician_id = my_clinician_id());
 drop policy if exists "patient ends link" on public.care_links;
-create policy "patient ends link" on public.care_links for update using (patient_id = auth.uid())
-  with check (patient_id = auth.uid());
+create policy "patient ends link" on public.care_links for update using (patient_id = my_patient_id())
+  with check (patient_id = my_patient_id());
 
 drop policy if exists "library readable" on public.exercises;
 create policy "library readable" on public.exercises for select using (auth.role() = 'authenticated');
 
 drop policy if exists "plans readable" on public.care_plans;
 create policy "plans readable" on public.care_plans for select
-  using (patient_id = auth.uid() or is_linked_clinician(patient_id));
+  using (patient_id = my_patient_id() or is_linked_clinician(patient_id));
 drop policy if exists "plan items readable" on public.plan_items;
 create policy "plan items readable" on public.plan_items for select using (
   exists (select 1 from care_plans p where p.id = plan_items.plan_id
-          and (p.patient_id = auth.uid() or is_linked_clinician(p.patient_id))));
+          and (p.patient_id = my_patient_id() or is_linked_clinician(p.patient_id))));
 
 drop policy if exists "patient writes sessions" on public.sessions;
-create policy "patient writes sessions" on public.sessions for insert with check (patient_id = auth.uid());
+create policy "patient writes sessions" on public.sessions for insert with check (patient_id = my_patient_id());
 drop policy if exists "sessions readable" on public.sessions;
 create policy "sessions readable" on public.sessions for select
-  using (patient_id = auth.uid() or is_linked_clinician(patient_id));
+  using (patient_id = my_patient_id() or is_linked_clinician(patient_id));
 drop policy if exists "patient writes session exercises" on public.session_exercises;
 create policy "patient writes session exercises" on public.session_exercises for insert with check (
-  exists (select 1 from sessions s where s.id = session_exercises.session_id and s.patient_id = auth.uid()));
+  exists (select 1 from sessions s where s.id = session_exercises.session_id and s.patient_id = my_patient_id()));
 drop policy if exists "session exercises readable" on public.session_exercises;
 create policy "session exercises readable" on public.session_exercises for select using (
   exists (select 1 from sessions s where s.id = session_exercises.session_id
-          and (s.patient_id = auth.uid() or is_linked_clinician(s.patient_id))));
+          and (s.patient_id = my_patient_id() or is_linked_clinician(s.patient_id))));
 
 drop policy if exists "call parties read" on public.video_calls;
 create policy "call parties read" on public.video_calls for select
-  using (patient_id = auth.uid() or clinician_id = auth.uid());
+  using (patient_id = my_patient_id() or clinician_id = my_clinician_id());
 drop policy if exists "clinician books calls" on public.video_calls;
 create policy "clinician books calls" on public.video_calls for insert
-  with check (clinician_id = auth.uid() and is_linked_clinician(patient_id));
+  with check (clinician_id = my_clinician_id() and is_linked_clinician(patient_id));
 drop policy if exists "clinician updates calls" on public.video_calls;
-create policy "clinician updates calls" on public.video_calls for update using (clinician_id = auth.uid())
-  with check (clinician_id = auth.uid());
+create policy "clinician updates calls" on public.video_calls for update using (clinician_id = my_clinician_id())
+  with check (clinician_id = my_clinician_id());
 
-grant execute on function public.create_clinician_profile(text, text, text, text, text) to authenticated;
+grant execute on function public.create_clinician_profile(jsonb) to authenticated;
 grant execute on function public.regenerate_referral_code() to authenticated;
 grant execute on function public.link_patient_with_code(text) to authenticated;
 grant execute on function public.publish_care_plan(uuid, text, jsonb) to authenticated;

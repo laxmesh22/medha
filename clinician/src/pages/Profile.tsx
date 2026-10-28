@@ -2,7 +2,7 @@ import { Check, Copy, RefreshCw } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { TopBar } from "../components/Layout";
-import { Empty } from "../components/ui";
+import { Empty, StatusBadge } from "../components/ui";
 import { api } from "../lib/api";
 import { resetDemo } from "../lib/demo";
 import { useData } from "../lib/store";
@@ -80,7 +80,13 @@ export function Profile() {
             </div>
           </div>
           <div className="card card-pad">
-            <h2 style={{ marginBottom: 14 }}>Profile</h2>
+            <div className="row between" style={{ marginBottom: 14 }}>
+              <h2>Profile</h2>
+              {clinician.verification_status === "verified" ? <StatusBadge severity="good" label="Registration verified" />
+                : clinician.verification_status === "rejected" ? <StatusBadge severity="critical" label="Registration not verified" />
+                : <StatusBadge severity="warning" label="Verification pending" />}
+            </div>
+            {clinician.email ? <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Signed in as {clinician.email}</div> : null}
             <ClinicianForm submitLabel="Save profile" />
             {api.mode === "demo" ? (
               <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>

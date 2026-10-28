@@ -6,10 +6,12 @@ export const VIDEO_BASE = ((import.meta.env.VITE_VIDEO_BASE_URL as string | unde
 export const VIDEO_PROVIDER = new URL(VIDEO_BASE).host;
 
 /** Room link for one person. The display name is pre-filled; everyone still sees a camera/mic check before joining. */
+const SUBJECT = `config.subject=${encodeURIComponent(JSON.stringify("Physio Buddy consult"))}`;
+
 export function roomUrl(room: string, displayName?: string): string {
-  const params = ["config.prejoinConfig.enabled=true"];
+  const params = ["config.prejoinConfig.enabled=true", SUBJECT];
   if (displayName) params.push(`userInfo.displayName=${encodeURIComponent(JSON.stringify(displayName))}`);
   return `${VIDEO_BASE}/${encodeURIComponent(room)}#${params.join("&")}`;
 }
 
-export const patientJoinUrl = (room: string) => `${VIDEO_BASE}/${encodeURIComponent(room)}`;
+export const patientJoinUrl = (room: string) => `${VIDEO_BASE}/${encodeURIComponent(room)}#${SUBJECT}`;

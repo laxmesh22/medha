@@ -5,13 +5,25 @@ export type Side = "left" | "right" | "both";
 
 export interface Clinician {
   id: string;
+  email: string | null;
   full_name: string;
   title: string | null;
+  specialization: string | null;
   clinic: string | null;
+  city: string | null;
+  council: string | null;
   registration_no: string | null;
+  years_experience: number | null;
   phone: string | null;
   referral_code: string;
+  verification_status: "pending" | "verified" | "rejected";
   created_at: string;
+}
+
+export interface AuthUser {
+  email: string | null;
+  name: string | null;
+  picture: string | null;
 }
 
 export interface Patient {
@@ -102,17 +114,28 @@ export interface VideoCall {
 export interface ClinicianInput {
   full_name: string;
   title: string;
+  specialization: string;
   clinic: string;
+  city: string;
+  council: string;
   registration_no: string;
+  years_experience: string; // kept as typed; the database stores an integer
   phone: string;
 }
 
 /** Everything the dashboard reads or writes. Two implementations: Supabase and the demo store. */
 export interface Api {
   mode: "supabase" | "demo";
-  currentUserEmail(): Promise<string | null>;
-  signIn(email: string, password: string): Promise<void>;
-  signUp(email: string, password: string): Promise<{ needsConfirmation: boolean }>;
+  /** who signs people in: Auth0 (Google or email, hosted login page), Supabase's own auth, or the demo */
+  authMode: "auth0" | "supabase" | "demo";
+  currentUser(): Promise<AuthUser | null>;
+  /** finish an Auth0 / OAuth redirect if the URL carries one; returns the path to continue at */
+  completeRedirect(): Promise<string | null>;
+  signInWithGoogle(returnTo: string): Promise<void>;
+  /** auth0: opens the hosted login page (no credentials here); supabase: email + password */
+  signInWithEmail(returnTo: string, email?: string, password?: string): Promise<void>;
+  /** new doctor account; auth0 opens the hosted sign-up page */
+  signUp(method: "google" | "email", returnTo: string, email?: string, password?: string): Promise<{ needsConfirmation: boolean }>;
   signOut(): Promise<void>;
   onAuthChange(cb: () => void): () => void;
   getMyClinician(): Promise<Clinician | null>;

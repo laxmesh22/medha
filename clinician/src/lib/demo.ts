@@ -13,7 +13,7 @@ export const EXERCISES: Exercise[] = [
 ];
 
 const DAY = 86_400_000;
-const STORE_KEY = "pb-clinician-demo-v2";
+const STORE_KEY = "pb-clinician-demo-v3";
 
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -168,8 +168,10 @@ const inHours = (h: number) => {
 
 function initialStore(): Stored {
   const clinician: Clinician = {
-    id: "c-demo", full_name: "Dr. Ananya Rao", title: "Physiotherapist (MPT, Musculoskeletal)", clinic: "Physio Buddy Demo Clinic",
-    registration_no: "MH-PT-04417", phone: "+91 98200 00000", referral_code: "PB-7KQ3MX", created_at: isoDaysAgo(60),
+    id: "c-demo", email: "ananya.rao@demo.physiobuddy", full_name: "Dr. Ananya Rao", title: "MPT (Musculoskeletal)",
+    specialization: "Musculoskeletal", clinic: "Physio Buddy Demo Clinic", city: "Mumbai",
+    council: "State physiotherapy council (demo)", registration_no: "MH-PT-04417", years_experience: 9,
+    phone: "+91 98200 00000", referral_code: "PB-7KQ3MX", verification_status: "verified", created_at: isoDaysAgo(60),
   };
   const plans: CarePlan[] = PROFILES.filter((p) => p.plan).map((p) => ({
     id: `plan-${p.patient.id}-1`, patient_id: p.patient.id, version: 1, status: "active" as const,
@@ -208,6 +210,13 @@ function save(s: Stored) {
   }
 }
 
+function newCode(): string {
+  const a = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let code = "PB-";
+  for (let i = 0; i < 6; i++) code += a[Math.floor(Math.random() * a.length)];
+  return code;
+}
+
 export function resetDemo() {
   try {
     localStorage.removeItem(STORE_KEY);
@@ -219,6 +228,7 @@ export function resetDemo() {
 export function demoApi(): Api {
   let store = load();
   let signedIn = true;
+  let newDoctor = false; // signed up in this demo session and has not finished the profile yet
   const listeners = new Set<() => void>();
   const patients: Patient[] = PROFILES.map((p) => ({
     ...p.patient, created_at: isoDaysAgo(p.linkedDaysAgo + 1), consent_at: isoDaysAgo(p.linkedDaysAgo), video_room: roomFor(p.patient.id),
@@ -230,20 +240,34 @@ export function demoApi(): Api {
 
   return {
     mode: "demo",
-    async currentUserEmail() {
-      return signedIn ? "ananya.rao@demo.physiobuddy" : null;
+    authMode: "demo",
+    async currentUser() {
+      if (!signedIn) return null;
+      return newDoctor ? { email: "new.doctor@demo.physiobuddy", name: null, picture: null }
+        : { email: store.clinician.email, name: store.clinician.full_name, picture: null };
     },
-    async signIn() {
+    async completeRedirect() {
+      return null;
+    },
+    async signInWithGoogle() {
       signedIn = true;
+      newDoctor = false;
+      notify();
+    },
+    async signInWithEmail() {
+      signedIn = true;
+      newDoctor = false;
       notify();
     },
     async signUp() {
       signedIn = true;
+      newDoctor = true;
       notify();
       return { needsConfirmation: false };
     },
     async signOut() {
       signedIn = false;
+      newDoctor = false;
       notify();
     },
     onAuthChange(cb) {
@@ -251,17 +275,24 @@ export function demoApi(): Api {
       return () => listeners.delete(cb);
     },
     async getMyClinician() {
-      return signedIn ? store.clinician : null;
+      return signedIn && !newDoctor ? store.clinician : null;
     },
     async saveClinicianProfile(input: ClinicianInput) {
-      store = { ...store, clinician: { ...store.clinician, ...input } };
+      const years = input.years_experience.trim() === "" ? null : Number(input.years_experience);
+      const fields = { ...input, years_experience: Number.isFinite(years) ? years : null };
+      if (newDoctor) {
+        // a new sign-up in the demo: fresh profile and code, still shown with the demo patients
+        store = { ...store, clinician: { ...store.clinician, ...fields, id: "c-new", email: "new.doctor@demo.physiobuddy",
+          referral_code: newCode(), verification_status: "pending", created_at: new Date().toISOString() } };
+        newDoctor = false;
+      } else {
+        store = { ...store, clinician: { ...store.clinician, ...fields } };
+      }
       save(store);
       return store.clinician;
     },
     async regenerateReferralCode() {
-      const a = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-      let code = "PB-";
-      for (let i = 0; i < 6; i++) code += a[Math.floor(Math.random() * a.length)];
+      const code = newCode();
       store = { ...store, clinician: { ...store.clinician, referral_code: code } };
       save(store);
       return code;

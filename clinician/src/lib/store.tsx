@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "./api";
 import { summarize, SEVERITY_ORDER, type PatientSummary } from "./stats";
-import type { CarePlan, Clinician, Exercise, Patient, Session, VideoCall } from "./types";
+import type { AuthUser, CarePlan, Clinician, Exercise, Patient, Session, VideoCall } from "./types";
 
 export const HISTORY_DAYS = 42;
 
@@ -9,6 +9,9 @@ interface Data {
   loading: boolean;
   error: string | null;
   email: string | null;
+  user: AuthUser | null;
+  /** where to go after an Auth0 / OAuth redirect finished (consumed by the router) */
+  redirectTo: string | null;
   clinician: Clinician | null;
   exercises: Exercise[];
   patients: Patient[];
@@ -19,32 +22,37 @@ interface Data {
   exerciseName: (id: string) => string;
   reload: () => Promise<void>;
   setClinician: (c: Clinician) => void;
+  clearRedirect: () => void;
 }
 
 const Ctx = createContext<Data | null>(null);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<Omit<Data, "summaries" | "exerciseName" | "reload" | "setClinician">>({
-    loading: true, error: null, email: null, clinician: null, exercises: [], patients: [], plans: [], sessions: [], calls: [],
+  const [state, setState] = useState<Omit<Data, "summaries" | "exerciseName" | "reload" | "setClinician" | "clearRedirect">>({
+    loading: true, error: null, email: null, user: null, redirectTo: null, clinician: null, exercises: [], patients: [],
+    plans: [], sessions: [], calls: [],
   });
 
   const reload = useCallback(async () => {
     try {
-      const email = await api.currentUserEmail();
-      if (!email) {
-        setState((s) => ({ ...s, loading: false, error: null, email: null, clinician: null }));
+      const redirectTo = await api.completeRedirect();
+      const user = await api.currentUser();
+      const email = user ? user.email ?? "signed-in" : null;
+      if (!user) {
+        setState((s) => ({ ...s, loading: false, error: null, email: null, user: null, clinician: null, redirectTo }));
         return;
       }
       const clinician = await api.getMyClinician();
       if (!clinician) {
-        setState((s) => ({ ...s, loading: false, error: null, email, clinician: null }));
+        setState((s) => ({ ...s, loading: false, error: null, email, user, clinician: null, redirectTo: redirectTo ?? s.redirectTo }));
         return;
       }
       const [exercises, patients, plans, sessions, calls] = await Promise.all([
         api.listExercises(), api.listPatients(), api.listPlans(), api.listSessions(HISTORY_DAYS), api.listCalls(),
       ]);
       sessions.sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at));
-      setState({ loading: false, error: null, email, clinician, exercises, patients, plans, sessions, calls });
+      setState((s) => ({ loading: false, error: null, email, user, redirectTo: redirectTo ?? s.redirectTo, clinician, exercises,
+        patients, plans, sessions, calls }));
     } catch (e) {
       setState((s) => ({ ...s, loading: false, error: e instanceof Error ? e.message : String(e) }));
     }
@@ -64,6 +72,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       ...state, summaries, reload,
       exerciseName: (id) => names.get(id) ?? id,
       setClinician: (c) => setState((s) => ({ ...s, clinician: c })),
+      clearRedirect: () => setState((s) => ({ ...s, redirectTo: null })),
     };
   }, [state, reload]);
 
