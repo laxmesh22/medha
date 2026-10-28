@@ -12,12 +12,15 @@ execSync("npx vite build --outDir dist-artifact --emptyOutDir", {
 });
 const html = readFileSync(join(out, "index.html"), "utf8");
 const js = [...html.matchAll(/<script[^>]*src="([^"]+)"[^>]*><\/script>/g)].map((m) => readFileSync(join(out, m[1]), "utf8"));
-const css = [...html.matchAll(/<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g)].map((m) => readFileSync(join(out, m[1]), "utf8"));
+const css = [...html.matchAll(/<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g)]
+  .filter((m) => !/^https?:/.test(m[1])) // the web font stays a link (below)
+  .map((m) => readFileSync(join(out, m[1]), "utf8"));
 const safeJs = js.join("\n").replace(/<\/script/gi, "<\/script").replace(/<!--/g, "<\!--");
 const page = `<title>Auri Clinician</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@500&display=swap">
 <style>
-html, body { background: #f6f5f0; color: #10201f; }
+html, body { background: #f5f2ea; color: #10201f; }
 ${css.join("\n")}
 </style>
 <div id="root"></div>

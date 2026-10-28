@@ -1,5 +1,6 @@
 import { BookOpen, LayoutDashboard, LogOut, UserRound, Users } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { AuriLockup, AuriMark } from "./Logo";
 import { api } from "../lib/api";
 import { useData } from "../lib/store";
 import { Avatar } from "./ui";
@@ -13,13 +14,7 @@ export function Layout() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden>
-            <svg width="20" height="20" viewBox="0 0 32 32"><path d="M7 23 L15 9 L25 23" stroke="currentColor" strokeWidth="3.4" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </span>
-          <span>
-            <div className="brand-name">Auri</div>
-            <div className="brand-sub">Clinician dashboard</div>
-          </span>
+          <AuriLockup size={38} tone="light" sub="Clinician dashboard" />
         </div>
         <nav className="nav">
           <NavLink to="/" end><LayoutDashboard size={18} />Overview{attention ? <span className="count">{attention}</span> : null}</NavLink>
@@ -38,7 +33,7 @@ export function Layout() {
               {clinician.full_name}
               <small>{clinician.clinic ?? clinician.title}</small>
             </span>
-            <button className="icon-btn" style={{ marginLeft: "auto", color: "rgba(246,245,240,0.75)" }} title="Sign out"
+            <button className="icon-btn" style={{ marginLeft: "auto", color: "rgba(245,242,234,0.75)" }} title="Sign out"
               onClick={async () => { await api.signOut(); nav("/login"); }}>
               <LogOut size={17} />
             </button>
@@ -47,9 +42,7 @@ export function Layout() {
       </aside>
       <main className="main">
         <nav className="mobile-nav" aria-label="Sections">
-          <span className="brand-mark" aria-hidden>
-            <svg width="16" height="16" viewBox="0 0 32 32"><path d="M7 23 L15 9 L25 23" stroke="currentColor" strokeWidth="3.6" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </span>
+          <span className="brand-mark"><AuriMark size={30} tone="light" /></span>
           <NavLink to="/" end>Overview</NavLink>
           <NavLink to="/patients">Patients</NavLink>
           <NavLink to="/library">Library</NavLink>

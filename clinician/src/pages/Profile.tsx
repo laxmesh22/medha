@@ -18,7 +18,7 @@ export function Profile() {
 
   useEffect(() => {
     if (!code) return;
-    QRCode.toDataURL(code, { width: 220, margin: 1, color: { dark: "#0e4f4a", light: "#ffffff" } }).then(setQr).catch(() => setQr(null));
+    QRCode.toDataURL(code, { width: 220, margin: 1, color: { dark: "#0a4a4f", light: "#ffffff" } }).then(setQr).catch(() => setQr(null));
   }, [code]);
 
   if (!clinician) return <Empty>Loading…</Empty>;

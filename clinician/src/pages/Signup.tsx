@@ -41,7 +41,7 @@ export function Signup() {
     if (user?.name && !form.full_name) setForm((f) => ({ ...f, full_name: user.name ?? "" }));
   }, [user?.name, form.full_name]);
   useEffect(() => {
-    if (done && clinician) QRCode.toDataURL(clinician.referral_code, { width: 200, margin: 1, color: { dark: "#0e4f4a", light: "#ffffff" } }).then(setQr).catch(() => setQr(null));
+    if (done && clinician) QRCode.toDataURL(clinician.referral_code, { width: 200, margin: 1, color: { dark: "#0a4a4f", light: "#ffffff" } }).then(setQr).catch(() => setQr(null));
   }, [done, clinician]);
 
   if (email && clinician && !done) return <Navigate to="/" replace />;
