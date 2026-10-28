@@ -187,6 +187,18 @@ patients link with it from the patient app (Adi), prescribe exercises, see daily
   `video/scripts/capture_dashboard.mjs` (dev server on 5175 + chrome-headless-shell); music
   `tools/audio/make_soundtrack.py --intro 58`.
 
+### 2026-10-28 · Claude Code: dashboard live on Supabase + Auth0 + Vercel, logo
+- `clinician/.env.local` (git-ignored) points at the team's Supabase project and Auth0 tenant
+  `dev-4cz1sir5jj78abm1.us.auth0.com`; `schema.sql` has been run there. Deployed with the Vercel CLI (project
+  `auri-clinician`, same four VITE_ vars set in Vercel): https://auri-clinician.vercel.app. Redeploy:
+  `cd clinician && npx vercel deploy --prod`.
+- Fixed: React StrictMode exchanged the Auth0 code twice ("Invalid state" -> "Could not load data"). Signing in without
+  a doctor profile now shows a red "No account found" banner on sign-up.
+- Logo from the brand sheet (`src/components/Logo.tsx`, `public/favicon.svg`, app icons). Brand colours are final:
+  Deep Teal #0A4A4F, Off-White #F5F2EA.
+- Branch `design-language` (worktree `.claude/worktrees/design-language`) holds the separate restyle to Aditya's
+  design language; it does not have the logo yet.
+
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
 `api/server.py`, `core/coach.py`, `__main__.py`): check `git diff` first and commit right after editing.
