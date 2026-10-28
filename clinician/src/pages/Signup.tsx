@@ -132,7 +132,7 @@ export function Signup() {
             <div className="stack" style={{ gap: 18 }}>
               <div>
                 <h1>Welcome, {clinician.full_name.split(" ").slice(0, 2).join(" ")}</h1>
-                <p className="ink2" style={{ margin: "6px 0 0" }}>Your account is ready. Give patients this code; they enter it in the Physio Buddy app to link to you.</p>
+                <p className="ink2" style={{ margin: "6px 0 0" }}>Your account is ready. Give patients this code; they enter it in the Auri app to link to you.</p>
               </div>
               <div className="row wrap" style={{ gap: 20 }}>
                 {qr ? <span className="qr"><img src={qr} width={150} height={150} alt={`QR code for ${clinician.referral_code}`} /></span> : null}

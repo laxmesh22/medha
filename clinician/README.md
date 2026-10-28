@@ -1,6 +1,6 @@
-# Physio Buddy · Clinician dashboard
+# Auri · Clinician dashboard
 
-The physiotherapist side of Physio Buddy: onboarding with a referral code, the patients who linked with that code,
+The physiotherapist side of Auri: onboarding with a referral code, the patients who linked with that code,
 care-plan prescribing (versioned), and daily progress (range of motion from the sensors, adherence, pain, form flags).
 Video consults included; text messaging is not part of this release.
 

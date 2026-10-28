@@ -14,7 +14,7 @@ const html = readFileSync(join(out, "index.html"), "utf8");
 const js = [...html.matchAll(/<script[^>]*src="([^"]+)"[^>]*><\/script>/g)].map((m) => readFileSync(join(out, m[1]), "utf8"));
 const css = [...html.matchAll(/<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"[^>]*>/g)].map((m) => readFileSync(join(out, m[1]), "utf8"));
 const safeJs = js.join("\n").replace(/<\/script/gi, "<\/script").replace(/<!--/g, "<\!--");
-const page = `<title>Physio Buddy Clinician</title>
+const page = `<title>Auri Clinician</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 html, body { background: #f6f5f0; color: #10201f; }

@@ -23,7 +23,7 @@ export function Profile() {
 
   if (!clinician) return <Empty>Loading…</Empty>;
 
-  const share = `Join me on Physio Buddy: open the app, choose "Link my physiotherapist" and enter the code ${code}.`;
+  const share = `Join me on Auri: open the app, choose "Link my physiotherapist" and enter the code ${code}.`;
   const copy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -51,7 +51,7 @@ export function Profile() {
                   <button className="btn ghost" onClick={() => copy(share)}>Copy invite message</button>
                 </div>
                 <div className="ink2" style={{ fontSize: 14, maxWidth: 440 }}>
-                  How it works: the patient signs up in the Physio Buddy app, fills in their details, then enters this code (or scans
+                  How it works: the patient signs up in the Auri app, fills in their details, then enters this code (or scans
                   the QR). They agree to share their data with you and appear in your patient list.
                 </div>
               </div>

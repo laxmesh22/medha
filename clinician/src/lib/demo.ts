@@ -13,7 +13,7 @@ export const EXERCISES: Exercise[] = [
 ];
 
 const DAY = 86_400_000;
-const STORE_KEY = "pb-clinician-demo-v3";
+const STORE_KEY = "auri-clinician-demo-v1";
 
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -150,13 +150,13 @@ interface Stored {
 /** Stable, unguessable-looking room per patient (the real app gets a random one from the database). */
 function roomFor(id: string): string {
   let h = 2166136261;
-  for (const c of `physio-buddy-demo:${id}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+  for (const c of `auri-demo:${id}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
   let out = "";
   for (let i = 0; i < 18; i++) {
     h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
     out += "0123456789abcdef"[h & 15];
   }
-  return `pb-${out}`;
+  return `au-${out}`;
 }
 
 const inHours = (h: number) => {
@@ -168,10 +168,10 @@ const inHours = (h: number) => {
 
 function initialStore(): Stored {
   const clinician: Clinician = {
-    id: "c-demo", email: "ananya.rao@demo.physiobuddy", full_name: "Dr. Ananya Rao", title: "MPT (Musculoskeletal)",
-    specialization: "Musculoskeletal", clinic: "Physio Buddy Demo Clinic", city: "Mumbai",
+    id: "c-demo", email: "ananya.rao@demo.auri", full_name: "Dr. Ananya Rao", title: "MPT (Musculoskeletal)",
+    specialization: "Musculoskeletal", clinic: "Auri Demo Clinic", city: "Mumbai",
     council: "State physiotherapy council (demo)", registration_no: "MH-PT-04417", years_experience: 9,
-    phone: "+91 98200 00000", referral_code: "PB-7KQ3MX", verification_status: "verified", created_at: isoDaysAgo(60),
+    phone: "+91 98200 00000", referral_code: "AU-7KQ3MX", verification_status: "verified", created_at: isoDaysAgo(60),
   };
   const plans: CarePlan[] = PROFILES.filter((p) => p.plan).map((p) => ({
     id: `plan-${p.patient.id}-1`, patient_id: p.patient.id, version: 1, status: "active" as const,
@@ -212,7 +212,7 @@ function save(s: Stored) {
 
 function newCode(): string {
   const a = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  let code = "PB-";
+  let code = "AU-";
   for (let i = 0; i < 6; i++) code += a[Math.floor(Math.random() * a.length)];
   return code;
 }
@@ -243,7 +243,7 @@ export function demoApi(): Api {
     authMode: "demo",
     async currentUser() {
       if (!signedIn) return null;
-      return newDoctor ? { email: "new.doctor@demo.physiobuddy", name: null, picture: null }
+      return newDoctor ? { email: "new.doctor@demo.auri", name: null, picture: null }
         : { email: store.clinician.email, name: store.clinician.full_name, picture: null };
     },
     async completeRedirect() {
@@ -282,7 +282,7 @@ export function demoApi(): Api {
       const fields = { ...input, years_experience: Number.isFinite(years) ? years : null };
       if (newDoctor) {
         // a new sign-up in the demo: fresh profile and code, still shown with the demo patients
-        store = { ...store, clinician: { ...store.clinician, ...fields, id: "c-new", email: "new.doctor@demo.physiobuddy",
+        store = { ...store, clinician: { ...store.clinician, ...fields, id: "c-new", email: "new.doctor@demo.auri",
           referral_code: newCode(), verification_status: "pending", created_at: new Date().toISOString() } };
         newDoctor = false;
       } else {

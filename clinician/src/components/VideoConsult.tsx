@@ -104,7 +104,7 @@ export function VideoConsult({ patient }: { patient: Patient }) {
             <div>
               <h2>Video consult with {first}</h2>
               <p className="ink2" style={{ margin: "4px 0 0" }}>The call opens in a new tab on {VIDEO_PROVIDER}. {first} joins from the
-                Physio Buddy app or the link below; both of you get a camera and microphone check first.</p>
+                Auri app or the link below; both of you get a camera and microphone check first.</p>
             </div>
           </div>
           <div className="row wrap" style={{ marginTop: 16 }}>

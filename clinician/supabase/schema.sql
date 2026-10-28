@@ -1,4 +1,4 @@
--- Physio Buddy: shared Supabase schema for the clinician dashboard (this app) and the patient app.
+-- Auri: shared Supabase schema for the clinician dashboard (this app) and the patient app.
 -- Run once in the Supabase SQL editor (or `supabase db push`). Safe to re-run: objects are created if missing.
 --
 -- Who writes what
@@ -130,7 +130,7 @@ create table if not exists public.session_exercises (
 -- Video consults. Each care link has its own unguessable room name; the call itself runs on the video provider
 -- (Jitsi Meet by default, VITE_VIDEO_BASE_URL in the apps). Both apps open https://<provider>/<video_room>.
 alter table public.care_links add column if not exists video_room text not null
-  default ('pb-' || encode(gen_random_bytes(9), 'hex'));
+  default ('au-' || encode(gen_random_bytes(9), 'hex'));
 
 create table if not exists public.video_calls (
   id             uuid primary key default gen_random_uuid(),
@@ -173,7 +173,7 @@ declare
   code text;
 begin
   loop
-    code := 'PB-';
+    code := 'AU-';
     for i in 1..6 loop
       code := code || substr(alphabet, 1 + floor(random() * length(alphabet))::int, 1);
     end loop;

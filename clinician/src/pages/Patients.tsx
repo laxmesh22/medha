@@ -40,7 +40,7 @@ export function Patients() {
         <div className="page-head">
           <div>
             <h1>Patients</h1>
-            <p>Patients appear here after they enter your code <b className="num">{clinician?.referral_code}</b> in the Physio Buddy app.</p>
+            <p>Patients appear here after they enter your code <b className="num">{clinician?.referral_code}</b> in the Auri app.</p>
           </div>
           <div className="row">
             {FILTERS.map((f) => (

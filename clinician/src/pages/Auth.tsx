@@ -23,7 +23,7 @@ export function BrandPanel() {
         <span className="brand-mark" aria-hidden>
           <svg width="20" height="20" viewBox="0 0 32 32"><path d="M7 23 L15 9 L25 23" stroke="currentColor" strokeWidth="3.4" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </span>
-        <span className="brand-name">Physio Buddy</span>
+        <span className="brand-name">Auri</span>
       </div>
       <div>
         <h1>Your patients' shoulder rehab, measured between visits.</h1>
@@ -35,7 +35,6 @@ export function BrandPanel() {
           <div><ShieldCheck size={20} /><span>Each physiotherapist sees only their own linked patients.</span></div>
         </div>
       </div>
-      <p style={{ fontSize: 13 }}>Clinic station: Jetson Orin Nano + RealSense D455f · Wearable straps: BNO085</p>
     </div>
   );
 }
@@ -120,13 +119,13 @@ export function Login() {
         <div className="auth-card">
           <div>
             <h1>Sign in</h1>
-            <p className="ink2" style={{ margin: "6px 0 0" }}>Physio Buddy for physiotherapists and clinicians.</p>
+            <p className="ink2" style={{ margin: "6px 0 0" }}>Auri for physiotherapists and clinicians.</p>
           </div>
           {api.authMode === "demo" ? (
             <div className="note">Demo mode: sign-in is simulated and the dashboard shows fictional patients.</div>
           ) : null}
           <SignInButtons mode="in" returnTo="/" onDone={async () => { await reload(); nav("/"); }} />
-          <div className="divider"><span>New to Physio Buddy?</span></div>
+          <div className="divider"><span>New to Auri?</span></div>
           <Link to="/signup" className="btn ghost">Create a doctor account</Link>
         </div>
       </div>

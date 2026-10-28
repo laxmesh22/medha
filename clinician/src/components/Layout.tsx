@@ -17,7 +17,7 @@ export function Layout() {
             <svg width="20" height="20" viewBox="0 0 32 32"><path d="M7 23 L15 9 L25 23" stroke="currentColor" strokeWidth="3.4" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </span>
           <span>
-            <div className="brand-name">Physio Buddy</div>
+            <div className="brand-name">Auri</div>
             <div className="brand-sub">Clinician dashboard</div>
           </span>
         </div>
