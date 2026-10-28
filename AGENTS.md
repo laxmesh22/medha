@@ -207,6 +207,8 @@ patients link with it from the patient app (Adi), prescribe exercises, see daily
   amber error banners, one accent for every chart, labelled sign-out button.
 - Kept for a desktop data dashboard: body text 16 px (the doc's 18 sp is for the phone app) and the white Google button.
 - Preview page: `npm run artifact` -> `dist-artifact/auri-clinician-design.html`.
+- Deployed separately (Vercel project `auri-clinician-design`, same Supabase + Auth0 settings):
+  https://auri-clinician-design.vercel.app. Redeploy from this worktree: `cd clinician && npx vercel deploy --prod`.
 
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
