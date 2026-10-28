@@ -41,7 +41,7 @@ export function Meter({ value }: { value: number | null }) {
       <div className={`meter ${cls}`} role="meter" aria-valuenow={Math.round(value * 100)} aria-valuemin={0} aria-valuemax={100}>
         <i style={{ width: `${Math.round(value * 100)}%` }} />
       </div>
-      <span className="num" style={{ fontSize: 13, minWidth: 38, textAlign: "right" }}>
+      <span className="num" style={{ fontSize: 14, minWidth: 38, textAlign: "right" }}>
         {Math.round(value * 100)}%
       </span>
     </div>

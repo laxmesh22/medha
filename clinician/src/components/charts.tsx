@@ -5,20 +5,20 @@ import type { Session } from "../lib/types";
 import { fmtDate } from "../lib/stats";
 
 const C = {
-  series1: "#00897b", // = --series-1 (SVG attributes do not resolve CSS variables)
-  series2: "#d4612f", // = --series-2
-  grid: "#e6e4dc",
-  axis: "#7d8988",
-  surface: "#fdfdfb",
-  ink2: "#4a5857",
+  series1: "#0f6e6e", // = --series-1 (SVG attributes do not resolve CSS variables)
+  series2: "#0f6e6e", // = --series-2: the design language allows one accent colour
+  grid: "#ecece6",
+  axis: "#5c5c57",
+  surface: "#ffffff",
+  ink2: "#5c5c57",
 };
 const DAY = 86_400_000;
 /** Round an axis maximum up so ticks land on clean steps (0 / 4 / 8 / 12 / 16, not 0 / 4 / 8 / 14). */
 const niceMax = (m: number) => (m <= 4 ? Math.max(1, m) : Math.ceil(m / 4) * 4);
 
 const axisProps = {
-  tick: { fill: C.axis, fontSize: 12 },
-  axisLine: { stroke: "#c7c5bb" },
+  tick: { fill: C.axis, fontSize: 14 },
+  axisLine: { stroke: "#cfcfc8" },
   tickLine: false,
 } as const;
 
@@ -45,14 +45,14 @@ export function RomChart({ series, target, max }: { series: { t: number; peak: n
   const top = Math.min(max, Math.ceil((Math.max(target ?? 0, ...data.map((d) => d.peak)) + 15) / 10) * 10);
   return (
     <ResponsiveContainer width="100%" height={190}>
-      <LineChart data={data} margin={{ top: 14, right: 78, bottom: 0, left: -12 }}>
+      <LineChart data={data} margin={{ top: 14, right: 96, bottom: 0, left: -12 }}>
         <CartesianGrid stroke={C.grid} vertical={false} />
         <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} {...axisProps}
           tickFormatter={(t: number) => fmtDate(new Date(t).toISOString())} minTickGap={36} />
         <YAxis domain={[0, top]} {...axisProps} tickFormatter={(v: number) => `${v}°`} width={48} />
         {target !== null ? (
           <ReferenceLine y={target} stroke={C.ink2} strokeWidth={1}
-            label={{ value: `Target ${target}°`, position: "right", fill: C.ink2, fontSize: 11 }} />
+            label={{ value: `Target ${target}°`, position: "right", fill: C.ink2, fontSize: 14 }} />
         ) : null}
         <Tooltip content={<Tip unit="°" keyColor="var(--series-1)" />} cursor={{ stroke: C.axis, strokeWidth: 1 }} />
         <Line type="monotone" dataKey="peak" stroke={C.series1} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
@@ -76,14 +76,14 @@ export function AdherenceChart({ sessions, days, plannedPerDay }: { sessions: Se
   });
   return (
     <ResponsiveContainer width="100%" height={180}>
-      <BarChart data={data} margin={{ top: 14, right: 92, bottom: 0, left: -18 }} barCategoryGap="22%">
+      <BarChart data={data} margin={{ top: 14, right: 104, bottom: 0, left: -18 }} barCategoryGap="22%">
         <CartesianGrid stroke={C.grid} vertical={false} />
         <XAxis dataKey="t" {...axisProps} tickFormatter={(t: number) => fmtDate(new Date(t).toISOString())} minTickGap={28} />
         <YAxis allowDecimals={false} domain={[0, niceMax(Math.max(plannedPerDay, ...data.map((d) => d.n)))]} tickCount={5}
           {...axisProps} width={44} />
         {plannedPerDay > 0 ? (
           <ReferenceLine y={plannedPerDay} stroke={C.ink2} strokeWidth={1}
-            label={{ value: `Planned ${plannedPerDay}/day`, position: "right", fill: C.ink2, fontSize: 11 }} />
+            label={{ value: `Planned ${plannedPerDay}/day`, position: "right", fill: C.ink2, fontSize: 14 }} />
         ) : null}
         <Tooltip content={<Tip unit="" keyColor="var(--series-1)" fmt={(v) => `${v} session${v === 1 ? "" : "s"}`} />}
           cursor={{ fill: "rgba(18,114,106,0.06)" }} />
@@ -107,14 +107,14 @@ export function PainChart({ sessions, stop }: { sessions: Session[]; stop: numbe
   }));
   return (
     <ResponsiveContainer width="100%" height={180}>
-      <LineChart data={data} margin={{ top: 14, right: 92, bottom: 0, left: -18 }}>
+      <LineChart data={data} margin={{ top: 14, right: 104, bottom: 0, left: -18 }}>
         <CartesianGrid stroke={C.grid} vertical={false} />
         <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} {...axisProps}
           tickFormatter={(t: number) => fmtDate(new Date(t).toISOString())} minTickGap={36} />
         <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} {...axisProps} width={44} />
         {stop !== null ? (
           <ReferenceLine y={stop} stroke={C.ink2} strokeWidth={1}
-            label={{ value: `Stop at ${stop}`, position: "right", fill: C.ink2, fontSize: 11 }} />
+            label={{ value: `Stop at ${stop}`, position: "right", fill: C.ink2, fontSize: 14 }} />
         ) : null}
         <Tooltip content={<Tip unit="/10" keyColor="var(--series-2)" />} cursor={{ stroke: C.axis, strokeWidth: 1 }} />
         <Line type="monotone" dataKey="pain" stroke={C.series2} strokeWidth={2} dot={false}

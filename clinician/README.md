@@ -25,7 +25,7 @@ camera and microphone check before joining. The physio may be asked to sign in o
   the public meet.jit.si servers are fine for a demo but are not a clinical service.
 
 ## Share a preview
-`npm run artifact` builds `dist-artifact/physio-buddy-clinician.html`: one self-contained page on demo data
+`npm run artifact` builds `dist-artifact/auri-clinician-design.html`: one self-contained page on demo data
 (in-memory routing, no backend access), published as a claude.ai Artifact for the team. Video calls work from it
 (they open in a new tab); real patient data needs the deployed app with Supabase.
 

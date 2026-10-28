@@ -49,7 +49,7 @@ export function PatientDetail() {
               <div className="ink2" style={{ marginTop: 4 }}>
                 {s.age ?? "—"} years · {p.sex ?? "—"} · {p.affected_side ? `${p.affected_side} shoulder` : "side not set"} · {p.diagnosis ?? "No diagnosis recorded"}
               </div>
-              <div className="muted" style={{ marginTop: 2, fontSize: 13 }}>Linked {fmtDate(p.consent_at)} · {p.phone ?? "no phone"}</div>
+              <div className="muted" style={{ marginTop: 2, fontSize: 14 }}>Linked {fmtDate(p.consent_at)} · {p.phone ?? "no phone"}</div>
             </div>
             <div className="stack" style={{ marginLeft: "auto", gap: 10, alignItems: "flex-end" }}>
               <div className="row wrap" style={{ justifyContent: "flex-end" }}>
@@ -82,7 +82,7 @@ export function PatientDetail() {
         {tab === "video" ? (
           <div className="stack">
             <VideoConsult patient={p} />
-            <div className="muted" style={{ fontSize: 13 }}>Text messaging is not part of this release{p.phone ? <>; the patient's phone is <b>{p.phone}</b></> : null}.</div>
+            <div className="muted" style={{ fontSize: 14 }}>Text messaging is not part of this release{p.phone ? <>; the patient's phone is <b>{p.phone}</b></> : null}.</div>
           </div>
         ) : null}
       </div>
@@ -125,7 +125,7 @@ function Progress({ s, onPlan }: { s: PatientSummary; onPlan: () => void }) {
 
       <div>
         <h2 style={{ marginBottom: 4 }}>Range of motion</h2>
-        <p className="muted" style={{ margin: "0 0 12px", fontSize: 13 }}>Best rep of each day, measured by the camera and straps (geometry, not typed in).</p>
+        <p className="muted" style={{ margin: "0 0 12px", fontSize: 14 }}>Best rep of each day, measured by the camera and straps (geometry, not typed in).</p>
         <div className="grid grid-2">
           {tracked.map((it) => {
             const r = s.rom[it.exercise_id];
@@ -135,7 +135,7 @@ function Progress({ s, onPlan }: { s: PatientSummary; onPlan: () => void }) {
                 <div className="chart-title">
                   <div>
                     <h3>{exerciseName(it.exercise_id)}</h3>
-                    <div className="muted" style={{ fontSize: 13 }}>
+                    <div className="muted" style={{ fontSize: 14 }}>
                       {gain === null ? "No data yet" : <><span className={gain >= 0 ? "delta-good" : "delta-bad"}>{gain >= 0 ? "▲" : "▼"} {Math.abs(Math.round(gain))}°</span> since the first session</>}
                     </div>
                   </div>
@@ -152,14 +152,14 @@ function Progress({ s, onPlan }: { s: PatientSummary; onPlan: () => void }) {
       <div className="grid grid-2">
         <div className="card chart-card">
           <div className="chart-title">
-            <div><h3>Sessions per day</h3><div className="muted" style={{ fontSize: 13 }}>Last 28 days</div></div>
+            <div><h3>Sessions per day</h3><div className="muted" style={{ fontSize: 14 }}>Last 28 days</div></div>
             <span className="big num">{s.sessions.filter((x) => Date.now() - Date.parse(x.started_at) < 28 * 86_400_000).length}</span>
           </div>
           <AdherenceChart sessions={s.sessions} days={28} plannedPerDay={perDay} />
         </div>
         <div className="card chart-card">
           <div className="chart-title">
-            <div><h3>Pain after sessions</h3><div className="muted" style={{ fontSize: 13 }}>Daily average · 0 = none, 10 = worst · patient-reported</div></div>
+            <div><h3>Pain after sessions</h3><div className="muted" style={{ fontSize: 14 }}>Daily average · 0 = none, 10 = worst · patient-reported</div></div>
             <span className="big num">{s.sessions[0]?.pain_after ?? "—"}/10</span>
           </div>
           <PainChart sessions={s.sessions} stop={Math.min(...s.plan.items.map((i) => i.pain_stop))} />
@@ -171,7 +171,7 @@ function Progress({ s, onPlan }: { s: PatientSummary; onPlan: () => void }) {
         <div className="list" style={{ marginTop: 10 }}>
           {[...flags.entries()].sort((a, b) => b[1] - a[1]).map(([f, n]) => (
             <div key={f} className="list-row">
-              <span style={{ fontWeight: 560 }}>{FLAG_LABELS[f] ?? f}</span>
+              <span style={{ fontWeight: 700 }}>{FLAG_LABELS[f] ?? f}</span>
               <span className="muted" style={{ marginLeft: "auto" }}>{n} exercise set{n === 1 ? "" : "s"}</span>
             </div>
           ))}
@@ -203,7 +203,7 @@ function Plan({ s }: { s: PatientSummary }) {
             <tbody>
               {s.plan!.items.map((i) => (
                 <tr key={i.exercise_id}>
-                  <td style={{ fontWeight: 600 }}>{exerciseName(i.exercise_id)}</td>
+                  <td style={{ fontWeight: 700 }}>{exerciseName(i.exercise_id)}</td>
                   <td className="num">{i.sets} × {i.reps}{i.hold_s ? `, hold ${i.hold_s} s` : ""}</td>
                   <td className="num">{i.times_per_day}× a day, {i.days_per_week === 7 ? "every day" : `${i.days_per_week} days a week`}</td>
                   <td className="num">{i.rom_target_deg === null ? <span className="muted">—</span> : `${i.rom_target_deg}°`}</td>
@@ -330,7 +330,7 @@ function Sessions({ s }: { s: PatientSummary }) {
                 <td className="num" style={{ whiteSpace: "nowrap" }}>{fmtDateTime(x.started_at)}</td>
                 <td>{x.source === "station" ? "Clinic station" : "Home"}</td>
                 <td className="num">{Math.round(x.duration_s / 60)} min</td>
-                <td className="ink2" style={{ fontSize: 13.5 }}>
+                <td className="ink2" style={{ fontSize: 14.5 }}>
                   {x.exercises.map((e) => (
                     <div key={e.exercise_id}>
                       {exerciseName(e.exercise_id)}: <b className="num">{deg(e.peak_deg)}</b>, {e.reps_counted}/{e.reps_counted + e.reps_rejected} reps
@@ -377,7 +377,7 @@ function Medical({ s }: { s: PatientSummary }) {
         <div className="row between wrap">
           <div>
             <h3>Adherence this week</h3>
-            <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>{s.sessions7} of {s.planned7} planned sessions</p>
+            <p className="muted" style={{ margin: "2px 0 0", fontSize: 14 }}>{s.sessions7} of {s.planned7} planned sessions</p>
           </div>
           <div style={{ width: 260 }}><Meter value={s.adherence7} /></div>
         </div>

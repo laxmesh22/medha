@@ -38,11 +38,10 @@ export function Layout() {
               {clinician.full_name}
               <small>{clinician.clinic ?? clinician.title}</small>
             </span>
-            <button className="icon-btn" style={{ marginLeft: "auto", color: "rgba(246,245,240,0.75)" }} title="Sign out"
-              onClick={async () => { await api.signOut(); nav("/login"); }}>
-              <LogOut size={17} />
-            </button>
           </div>
+          <button className="btn ghost small" onClick={async () => { await api.signOut(); nav("/login"); }}>
+            <LogOut size={17} />Sign out
+          </button>
         </div>
       </aside>
       <main className="main">

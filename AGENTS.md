@@ -187,6 +187,15 @@ patients link with it from the patient app (Adi), prescribe exercises, see daily
   `video/scripts/capture_dashboard.mjs` (dev server on 5175 + chrome-headless-shell); music
   `tools/audio/make_soundtrack.py --intro 58`.
 
+### 2026-10-28 · Claude Code: branch `design-language` (Aditya's Auri Design Language)
+- The user asked for the design language as a **separate version**, not on the main branch. This branch restyles
+  `clinician/` only: palette from the doc (#FAFAF7 / #FFFFFF / #1A1A1A / #5C5C57 / #E3E3DD, accent #0F6E6E, tint
+  #E5F1F1, success #2E7D4F, caution #B26A00, danger #C62828), Noto Sans in two weights, flat hairline surfaces (no
+  shadows, gradients or blur), 12 px controls / 16 px cards / pill chips, 48 px targets, sentence-case table heads,
+  amber error banners, one accent for every chart, labelled sign-out button.
+- Kept for a desktop data dashboard: body text 16 px (the doc's 18 sp is for the phone app) and the white Google button.
+- Preview page: `npm run artifact` -> `dist-artifact/auri-clinician-design.html`.
+
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
 `api/server.py`, `core/coach.py`, `__main__.py`): check `git diff` first and commit right after editing.

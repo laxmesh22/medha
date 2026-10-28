@@ -39,7 +39,7 @@ export function Signup() {
     if (user?.name && !form.full_name) setForm((f) => ({ ...f, full_name: user.name ?? "" }));
   }, [user?.name, form.full_name]);
   useEffect(() => {
-    if (done && clinician) QRCode.toDataURL(clinician.referral_code, { width: 200, margin: 1, color: { dark: "#0e4f4a", light: "#ffffff" } }).then(setQr).catch(() => setQr(null));
+    if (done && clinician) QRCode.toDataURL(clinician.referral_code, { width: 200, margin: 1, color: { dark: "#0f6e6e", light: "#ffffff" } }).then(setQr).catch(() => setQr(null));
   }, [done, clinician]);
 
   if (email && clinician && !done) return <Navigate to="/" replace />;
@@ -78,7 +78,7 @@ export function Signup() {
               </div>
               {api.authMode === "demo" ? <div className="note">Demo mode: the account is simulated, so you can walk through sign-up safely.</div> : null}
               <SignInButtons mode="up" returnTo="/signup" onDone={reload} />
-              <p className="muted" style={{ fontSize: 13.5, margin: 0 }}>Already registered? <Link to="/login" style={{ color: "var(--teal)", fontWeight: 600 }}>Sign in</Link></p>
+              <p className="muted" style={{ fontSize: 14.5, margin: 0 }}>Already registered? <Link to="/login" style={{ color: "var(--teal)", fontWeight: 700 }}>Sign in</Link></p>
             </>
           ) : null}
 

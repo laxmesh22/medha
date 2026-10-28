@@ -124,13 +124,13 @@ export function VideoConsult({ patient }: { patient: Patient }) {
             {upcoming.map((c) => (
               <div key={c.id} className="list-row wrap">
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600 }}>{whenLabel(c.scheduled_for!)}</div>
-                  <div className="muted" style={{ fontSize: 13 }}>{c.duration_min} min{c.notes ? ` · ${c.notes}` : ""}</div>
+                  <div style={{ fontWeight: 700 }}>{whenLabel(c.scheduled_for!)}</div>
+                  <div className="muted" style={{ fontSize: 14 }}>{c.duration_min} min{c.notes ? ` · ${c.notes}` : ""}</div>
                 </div>
                 <div className="row" style={{ marginLeft: "auto" }}>
                   {cancelling === c.id ? (
                     <>
-                      <span className="muted" style={{ fontSize: 13 }}>Cancel this call?</span>
+                      <span className="muted" style={{ fontSize: 14 }}>Cancel this call?</span>
                       <button className="btn danger small" onClick={async () => { await api.cancelCall(c.id); setCancelling(null); await reload(); }}>Cancel call</button>
                       <button className="btn ghost small" onClick={() => setCancelling(null)}>Keep</button>
                     </>
@@ -153,8 +153,8 @@ export function VideoConsult({ patient }: { patient: Patient }) {
             {past.map((c) => (
               <div key={c.id} className="list-row">
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 560 }}>{fmtDateTime(c.started_at ?? c.scheduled_for ?? c.created_at)}</div>
-                  <div className="muted" style={{ fontSize: 13 }}>{c.notes ?? (c.scheduled_for ? "Booked call" : "Unscheduled call")}</div>
+                  <div style={{ fontWeight: 700 }}>{fmtDateTime(c.started_at ?? c.scheduled_for ?? c.created_at)}</div>
+                  <div className="muted" style={{ fontSize: 14 }}>{c.notes ?? (c.scheduled_for ? "Booked call" : "Unscheduled call")}</div>
                 </div>
                 <span className="chip" style={{ marginLeft: "auto" }}>
                   {c.status === "started" ? "Held" : c.status === "cancelled" ? "Cancelled" : "Missed"}

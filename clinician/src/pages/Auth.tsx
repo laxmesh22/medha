@@ -98,7 +98,7 @@ export function SignInButtons({ mode, returnTo, onDone }: { mode: "in" | "up"; r
       )}
       {err ? <div className="error">{err}</div> : null}
       {msg ? <div className="note">{msg}</div> : null}
-      <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+      <p className="muted" style={{ fontSize: 14.5, margin: 0 }}>
         {api.authMode === "auth0" ? "Secure sign-in by Auth0. " : null}
         {api.authMode === "demo" ? "Demo: no real account is created and nothing leaves this page. " : null}
         We only use your name and email to set up your clinician account.

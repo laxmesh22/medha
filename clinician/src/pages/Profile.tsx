@@ -18,7 +18,7 @@ export function Profile() {
 
   useEffect(() => {
     if (!code) return;
-    QRCode.toDataURL(code, { width: 220, margin: 1, color: { dark: "#0e4f4a", light: "#ffffff" } }).then(setQr).catch(() => setQr(null));
+    QRCode.toDataURL(code, { width: 220, margin: 1, color: { dark: "#0f6e6e", light: "#ffffff" } }).then(setQr).catch(() => setQr(null));
   }, [code]);
 
   if (!clinician) return <Empty>Loading…</Empty>;
@@ -86,11 +86,11 @@ export function Profile() {
                 : clinician.verification_status === "rejected" ? <StatusBadge severity="critical" label="Registration not verified" />
                 : <StatusBadge severity="warning" label="Verification pending" />}
             </div>
-            {clinician.email ? <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Signed in as {clinician.email}</div> : null}
+            {clinician.email ? <div className="muted" style={{ fontSize: 14, marginBottom: 12 }}>Signed in as {clinician.email}</div> : null}
             <ClinicianForm submitLabel="Save profile" />
             {api.mode === "demo" ? (
               <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
-                <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Demo mode: plans you publish are kept in this browser.</div>
+                <div className="muted" style={{ fontSize: 14, marginBottom: 8 }}>Demo mode: plans you publish are kept in this browser.</div>
                 <button className="btn ghost small" onClick={() => { resetDemo(); window.location.reload(); }}>Reset demo data</button>
               </div>
             ) : null}
@@ -121,7 +121,7 @@ export function Library() {
                 <span className="chip">{e.metric === "rotation" ? "Measures rotation" : "Measures elevation"}</span>
               </div>
               <p className="ink2">{e.description}</p>
-              <div className="muted" style={{ fontSize: 13 }}>Default dose: {e.default_sets} × {e.default_reps}{e.default_hold ? `, hold ${e.default_hold} s` : ""}</div>
+              <div className="muted" style={{ fontSize: 14 }}>Default dose: {e.default_sets} × {e.default_reps}{e.default_hold ? `, hold ${e.default_hold} s` : ""}</div>
             </div>
           ))}
         </div>

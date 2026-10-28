@@ -57,8 +57,8 @@ export function Overview() {
                   <div key={s.patient.id} className="list-row click" onClick={() => nav(`/patients/${s.patient.id}`)}>
                     <Avatar name={s.patient.full_name} />
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600 }}>{s.patient.full_name}</div>
-                      <div className="muted" style={{ fontSize: 13 }}>{s.alerts.map((a) => a.detail).join(" · ")}</div>
+                      <div style={{ fontWeight: 700 }}>{s.patient.full_name}</div>
+                      <div className="muted" style={{ fontSize: 14 }}>{s.alerts.map((a) => a.detail).join(" · ")}</div>
                     </div>
                     <div className="row wrap" style={{ marginLeft: "auto", justifyContent: "flex-end" }}>
                       {s.alerts.map((a) => <StatusBadge key={a.label} severity={a.severity} label={a.label} />)}
@@ -71,7 +71,7 @@ export function Overview() {
               <div className="chart-title">
                 <div>
                   <h2>Sessions per day, all patients</h2>
-                  <p className="muted" style={{ margin: "2px 0 0", fontSize: 13 }}>Last 14 days</p>
+                  <p className="muted" style={{ margin: "2px 0 0", fontSize: 14 }}>Last 14 days</p>
                 </div>
                 <span className="big num">{sessions.filter((s) => now - Date.parse(s.started_at) < 14 * 86_400_000).length}</span>
               </div>
@@ -96,8 +96,8 @@ export function Overview() {
                   return (
                     <div key={c.id} className="list-row">
                       <div style={{ minWidth: 0, cursor: "pointer" }} onClick={() => nav(`/patients/${p.id}?tab=video`)}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{p.full_name}</div>
-                        <div className="muted" style={{ fontSize: 12.5 }}>{whenLabel(c.scheduled_for!)} · {c.duration_min} min</div>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>{p.full_name}</div>
+                        <div className="muted" style={{ fontSize: 14.5 }}>{whenLabel(c.scheduled_for!)} · {c.duration_min} min</div>
                       </div>
                       <div style={{ marginLeft: "auto" }}>
                         {soon ? <JoinCallLink patient={p} call={c} label="Join" small />
@@ -119,10 +119,10 @@ export function Overview() {
                 {sessions.slice(0, 7).map((s) => (
                   <div key={s.id} className="list-row click" onClick={() => nav(`/patients/${s.patient_id}?tab=sessions`)}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{name(s.patient_id)}</div>
-                      <div className="muted" style={{ fontSize: 12.5 }}>{fmtDateTime(s.started_at)} · {s.source === "station" ? "Clinic station" : "Home"}</div>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{name(s.patient_id)}</div>
+                      <div className="muted" style={{ fontSize: 14.5 }}>{fmtDateTime(s.started_at)} · {s.source === "station" ? "Clinic station" : "Home"}</div>
                     </div>
-                    <div style={{ marginLeft: "auto", textAlign: "right", fontSize: 13 }}>
+                    <div style={{ marginLeft: "auto", textAlign: "right", fontSize: 14 }}>
                       <div className="num">{s.exercises.reduce((a, e) => a + e.reps_counted, 0)} reps</div>
                       <div className="muted num">pain {s.pain_after ?? "—"}/10</div>
                     </div>
@@ -137,8 +137,8 @@ export function Overview() {
                 {summaries.map((s) => (
                   <div key={s.patient.id} className="list-row click" onClick={() => nav(`/patients/${s.patient.id}`)}>
                     <Avatar name={s.patient.full_name} />
-                    <div style={{ fontWeight: 560, fontSize: 14 }}>{s.patient.full_name}</div>
-                    <div className="muted" style={{ marginLeft: "auto", fontSize: 13 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{s.patient.full_name}</div>
+                    <div className="muted" style={{ marginLeft: "auto", fontSize: 14 }}>
                       {s.lastSession ? relativeDay(s.lastSession.started_at) : "No sessions"}
                     </div>
                   </div>
