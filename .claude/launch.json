@@ -13,6 +13,12 @@
       "runtimeArgs": ["-m", "physiobuddy_hub", "run", "--sim", "--port", "8001",
                       "--dataset-dir", "C:/Users/laxme/AppData/Local/Temp/claude/D--medha/24fcde3e-1efc-406b-9483-754aacab6f6d/scratchpad/rec_test"],
       "port": 8001
+    },
+    {
+      "name": "clinician",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "D:/medha/clinician", "run", "dev", "--", "--port", "5175", "--strictPort"],
+      "port": 5175
     }
   ]
 }

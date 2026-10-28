@@ -22,8 +22,7 @@ schedule). Showcase: 31 Oct 2026, IIT Bombay. ML specifics: `ml/README.md`.
 7. Test recording sessions go to a scratch `--dataset-dir`, never `ml/data/real` (that folder is training data).
 
 ## Now working on
-- Claude Code: clinician (physio) dashboard in a new `clinician/` app (React + Supabase): referral-code linking,
-  patients, care-plan prescribing, progress charts. Schema in `clinician/supabase/`. Not touching hub/, ml/, web/.
+- (empty)
 
 ## Log
 ### 2026-10-14 22:57 · Claude Code (session "Agent handoff with OpenCV gesture tracking")
@@ -136,6 +135,26 @@ For Codex:
 - The recorder does not store strap data yet. When the BLE firmware lands it should save per-frame quaternions and
   gyro per strap, plus the N-pose and forward-raise samples, so real sessions use the same `StrapCalibration`.
 - Your public run (`reports/motionnet_cv_20261014-2357.json`, untracked) used feature v1. Re-run it to compare.
+
+### 2026-10-28 · Claude Code: clinician (physio) dashboard
+The team assigned the user (with Aditya Harbuda) the doctor side: physio onboarding with a unique referral code,
+patients link with it from the patient app (Adi), prescribe exercises, see daily progress. Supabase for data.
+- New `clinician/`: Vite + React + TypeScript, `npm run dev` on port 5175. Runs on built-in demo data when
+  `VITE_SUPABASE_URL` is unset.
+- `clinician/supabase/schema.sql` is the **shared schema for the patient app too**: clinicians, patients,
+  care_links, exercises, versioned care_plans + plan_items, sessions + session_exercises, row-level security, and the
+  RPCs `create_clinician_profile`, `regenerate_referral_code`, `link_patient_with_code` and `publish_care_plan`.
+  The data contract is in `clinician/README.md`.
+- Pages:
+  - overview (alerts first)
+  - patients list
+  - patient detail: progress charts, care-plan editor with version history, sessions, medical info,
+    messages placeholder
+  - profile with referral code + QR
+  - exercise library
+- Messaging is parked, as the team asked.
+- Brand hex values are provisional (`--brand-*` in `src/styles.css`) until the team sends the exact codes.
+- No changes to hub/, ml/ or web/.
 
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
