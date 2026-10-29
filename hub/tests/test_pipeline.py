@@ -117,6 +117,52 @@ def test_api_status_side_and_ws(pipeline):
         assert msg["type"] == "camera"
 
 
+def test_recording_off_without_dataset_dir_writes_nothing(pipeline):
+    """No --dataset-dir: refuse record, and do not create anything under ml/data/real."""
+    from physiobuddy_hub.pipeline import RECORDING_OFF_REASON
+    from physiobuddy_hub.recorder import DEFAULT_ROOT
+
+    assert pipeline.recorder is None
+    before = set(DEFAULT_ROOT.iterdir()) if DEFAULT_ROOT.exists() else None
+    client = TestClient(create_app(pipeline, {}))
+    status = client.get("/api/record/status")
+    assert status.status_code == 200
+    body = status.json()
+    assert body["enabled"] is False and body["active"] is False
+    assert body["reason"] == RECORDING_OFF_REASON
+    start = client.post("/api/record/start", json={
+        "subject_id": "S01", "side": "right", "consent": True, "protocol": "quick"})
+    assert start.status_code == 409
+    assert start.json() == {"ok": False, "enabled": False, "reason": RECORDING_OFF_REASON}
+    for action in ("next", "prev", "stop"):
+        step = client.post(f"/api/record/{action}")
+        assert step.status_code == 409
+        assert step.json() == {"ok": False, "enabled": False, "reason": RECORDING_OFF_REASON}
+    after = set(DEFAULT_ROOT.iterdir()) if DEFAULT_ROOT.exists() else None
+    assert before == after
+    _, state = pipeline.latest_state()
+    assert state["recorder"]["enabled"] is False
+
+
+def test_recording_accepted_with_dataset_dir(pipeline, tmp_path):
+    """--dataset-dir <tmp> accepts a consented recording and leaves ml/data/real alone."""
+    from physiobuddy_hub.recorder import DEFAULT_ROOT, DatasetRecorder
+
+    before = set(DEFAULT_ROOT.iterdir()) if DEFAULT_ROOT.exists() else None
+    pipeline.recorder = DatasetRecorder(tmp_path, up_cam=pipeline.up_cam)
+    client = TestClient(create_app(pipeline, {}))
+    assert client.get("/api/record/status").json()["enabled"] is True
+    start = client.post("/api/record/start", json={
+        "subject_id": "S01", "side": "right", "consent": True, "protocol": "quick"})
+    assert start.status_code == 200
+    body = start.json()
+    assert body["ok"] is True and body["active"] is True and body["enabled"] is True
+    assert (tmp_path / "S01").is_dir()
+    assert client.post("/api/record/stop").status_code == 200
+    after = set(DEFAULT_ROOT.iterdir()) if DEFAULT_ROOT.exists() else None
+    assert before == after
+
+
 def test_rest_calibration_sets_shrug_baseline(pipeline):
     pipeline.start_rest_capture()
     for _ in range(20):

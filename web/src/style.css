@@ -207,6 +207,7 @@ input[type='checkbox'], input[type='range'] { accent-color: var(--accent); }
 .meter i { display: block; height: 100%; width: 100%; transform-origin: left; transform: scaleX(0); background: var(--accent); transition: transform 0.18s; border-radius: 6px; }
 .target { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-top: 12px; font-size: 13px; color: var(--t3); }
 .target output { font: 600 13px var(--mono); color: var(--t2); }
+.target .hint { grid-column: 1 / -1; margin: 0; font-size: 12.5px; }
 .phase { list-style: none; padding: 0; margin: 14px 0 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .phase li {
   text-align: center; padding: 9px 2px; font-size: 13px; font-weight: 550; color: var(--t3); background: var(--s2);

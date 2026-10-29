@@ -21,9 +21,26 @@ from .datatypes import (
     L_EAR, L_HIP, L_SHOULDER, LOW, NOSE, R_EAR, R_HIP, R_SHOULDER, CameraFrame, Skeleton3D,
 )
 from .core.skeleton_kin import SIDE_IDX
-from .recorder import DatasetRecorder
 
 log = logging.getLogger(__name__)
+
+RECORDING_OFF_REASON = "Recording is off: start the hub with --dataset-dir <folder>"
+
+
+class RecordingOff(Exception):
+    """Record was called when the hub was started without ``--dataset-dir``."""
+
+    def __init__(self):
+        super().__init__(RECORDING_OFF_REASON)
+
+
+def recording_off_status() -> dict:
+    """Status payload when no dataset directory was given. ``enabled`` is what the UI reads."""
+    return {
+        "enabled": False, "active": False, "done": False, "announce": None, "announce_id": 0,
+        "block": None, "reason": RECORDING_OFF_REASON,
+    }
+
 
 # Recommended patient distance for the D455f (design doc §6.1)
 DIST_MIN_M, DIST_MAX_M = 1.6, 3.0
@@ -89,7 +106,7 @@ class CameraPipeline:
         self._rest_samples: Optional[list] = None
         self._log_fh = None
         self.coach = Coach("flexion")
-        self.recorder = DatasetRecorder(up_cam=self.up_cam)
+        self.recorder = None  # set by --dataset-dir; never the training folder by default
         self.nn = motionnet if motionnet is not None and motionnet.available else None
         self.autodetect = False
         self._auto_votes: deque = deque()
@@ -118,7 +135,7 @@ class CameraPipeline:
 
     def _autodetect_step(self, t_s: float, nn: Optional[dict]) -> None:
         """Switch exercise when the network is confident for >= AUTO_SPAN_S while the patient rests (lock held)."""
-        if not self.autodetect or self.recorder.active:
+        if not self.autodetect or (self.recorder is not None and self.recorder.active):
             return
         while self._auto_votes and self._auto_votes[0][0] < t_s - AUTO_WINDOW_S:
             self._auto_votes.popleft()
@@ -156,24 +173,36 @@ class CameraPipeline:
 
     # -- guided dataset recording ------------------------------------------------------------------
     def record_start(self, subject_id: str, side: str, consent: bool, protocol: str = "full") -> dict:
+        if self.recorder is None:
+            raise RecordingOff()
         self.set_side(side)
         with self._lock:
             st = self.recorder.start(subject_id, side, consent, protocol)
+            st["enabled"] = True
             self._apply_record_block()
             return st
 
     def record_step(self, action: str) -> dict:
+        if self.recorder is None:
+            raise RecordingOff()
         with self._lock:
             st = getattr(self.recorder, action)()
+            st["enabled"] = True
             self._apply_record_block()
             return st
 
     def record_status(self) -> dict:
+        if self.recorder is None:
+            return recording_off_status()
         with self._lock:
-            return self.recorder.status()
+            st = self.recorder.status()
+            st["enabled"] = True
+            return st
 
     def _apply_record_block(self) -> None:
         """Point the coach at the current block's exercise (caller holds the lock)."""
+        if self.recorder is None:
+            return
         b = self.recorder.block
         if b is None:
             return
@@ -265,19 +294,23 @@ class CameraPipeline:
                                                                kin.shrug_baseline)
             self._autodetect_step(t_s, nn_out)
             coach_state = self.coach.update(t_s, angles_d, nn=nn_out)
-            recorder_state = None
-            if self.recorder.active:
-                kp3d = None if sk is None else [
-                    [round(float(c), 4) for c in p] if v else None for p, v in zip(sk.points, sk.valid)]
-                changed = self.recorder.on_frame(frame.timestamp_ms, frame.frame_number, kp3d, angles_d,
-                                                 coach_state, self.up_cam)
-                if self.recorder.baseline_ready:
-                    self.kin.set_shrug_baseline(self.recorder.shrug_baseline)
-                    self.recorder.baseline_ready = False
-                if changed:
-                    self._apply_record_block()
-            if self.recorder.blocks:
-                recorder_state = self.recorder.status()
+            if self.recorder is None:
+                recorder_state = recording_off_status()
+            else:
+                recorder_state = None
+                if self.recorder.active:
+                    kp3d = None if sk is None else [
+                        [round(float(c), 4) for c in p] if v else None for p, v in zip(sk.points, sk.valid)]
+                    changed = self.recorder.on_frame(frame.timestamp_ms, frame.frame_number, kp3d, angles_d,
+                                                     coach_state, self.up_cam)
+                    if self.recorder.baseline_ready:
+                        self.kin.set_shrug_baseline(self.recorder.shrug_baseline)
+                        self.recorder.baseline_ready = False
+                    if changed:
+                        self._apply_record_block()
+                if self.recorder.blocks:
+                    recorder_state = self.recorder.status()
+                    recorder_state["enabled"] = True
         proc_ms = (time.perf_counter() - t0) * 1000.0
         self._times.append(time.perf_counter())
         fps = (len(self._times) - 1) / (self._times[-1] - self._times[0]) if len(self._times) > 1 else 0.0

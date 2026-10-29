@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import __version__
+from ..pipeline import RecordingOff
 
 STATIC_DIR = Path(__file__).parent / "static"
 WS_MAX_HZ = 30.0
@@ -46,7 +47,7 @@ class RecordStartBody(BaseModel):
 
 
 def create_app(pipeline, status: dict) -> FastAPI:
-    app = FastAPI(title="Physio Buddy Hub", version=__version__)
+    app = FastAPI(title="Auri Hub", version=__version__)
 
     @app.get("/api/status")
     def get_status():
@@ -109,6 +110,8 @@ def create_app(pipeline, status: dict) -> FastAPI:
         """Guided volunteer recording (keypoints only). Requires the volunteer's written consent."""
         try:
             return {"ok": True, **pipeline.record_start(body.subject_id, body.side, body.consent, body.protocol)}
+        except RecordingOff as exc:
+            return JSONResponse({"ok": False, "enabled": False, "reason": str(exc)}, status_code=409)
         except ValueError as exc:
             return JSONResponse({"ok": False, "reason": str(exc)}, status_code=400)
 
@@ -116,7 +119,10 @@ def create_app(pipeline, status: dict) -> FastAPI:
     def record_step(action: str):
         if action not in ("next", "prev", "stop"):
             return JSONResponse({"ok": False, "reason": "action must be next|prev|stop"}, status_code=404)
-        return {"ok": True, **pipeline.record_step(action)}
+        try:
+            return {"ok": True, **pipeline.record_step(action)}
+        except RecordingOff as exc:
+            return JSONResponse({"ok": False, "enabled": False, "reason": str(exc)}, status_code=409)
 
     @app.get("/api/record/status")
     def record_status():
@@ -166,7 +172,7 @@ def create_app(pipeline, status: dict) -> FastAPI:
         @app.get("/")
         def no_ui():
             return HTMLResponse(
-                "<h3>Physio Buddy hub is running</h3><p>Web UI not built yet: "
+                "<h3>Auri hub is running</h3><p>Web UI not built yet: "
                 "<code>cd web &amp;&amp; npm install &amp;&amp; npm run build</code>. "
                 "Live data: <code>/ws/live</code>, status: <a href='/api/status'>/api/status</a>.</p>")
 

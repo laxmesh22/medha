@@ -177,10 +177,21 @@ function renderVerdict(c) {
 // ---------------------------------------------------------------- dataset recording drawer
 let recAnnounceId = 0;
 function renderRecorder(r) {
+  const btn = $('#rec-btn');
+  if (r && r.enabled === false) {
+    btn.disabled = true;
+    btn.textContent = 'Recording off';
+    btn.title = r.reason || 'Recording is off: start the hub with --dataset-dir <folder>';
+    $('#rec-drawer').hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    return;
+  }
+  btn.disabled = false;
+  btn.title = '';
   const active = !!r?.active;
   $('#rec-form').hidden = active;
   $('#rec-live').hidden = !active;
-  $('#rec-btn').textContent = active ? 'Recording…' : 'Record dataset';
+  btn.textContent = active ? 'Recording…' : 'Record dataset';
   if (r?.announce_id && r.announce_id !== recAnnounceId) {
     recAnnounceId = r.announce_id;
     if (r.announce) agent.say(r.announce, { priority: 2, kind: 'system' });
@@ -203,7 +214,7 @@ function renderAutodetect(ad, c) {
   const sees = !nn ? '' : nn.is_unknown ? ' · no exercise' : ` · ${ui.exercises[nn.predicted_exercise]?.name || nn.predicted_exercise} ${Math.round(nn.confidence * 100)}%`;
   // not validated on our recordings: show its opinion only, it cannot switch exercises or veto reps
   btn.disabled = !ad.available;
-  btn.title = ad.available ? '' : 'Network not yet validated on Physio Buddy recordings: opinion only';
+  btn.title = ad.available ? '' : 'Network not yet validated on Auri recordings: opinion only';
   btn.setAttribute('aria-pressed', String(!!ad.enabled));
   btn.classList.toggle('on', !!ad.enabled);
   btn.textContent = ad.available ? `Auto-detect${ad.enabled ? sees : ''}` : `Network (advisory)${sees}`;
@@ -369,11 +380,23 @@ $('#rec-form').addEventListener('submit', async (e) => {
     subject_id: $('#rec-subject').value.trim(), side: ui.side,
     consent: $('#rec-consent').checked, protocol: $('#rec-protocol').value,
   });
-  if (!r.ok) { log('system', `Recording not started: ${r.reason}`); return; }
+  const err = $('#rec-error');
+  if (!r.ok) {
+    err.hidden = false;
+    err.textContent = r.reason || 'Recording not started';
+    log('system', `Recording not started: ${r.reason}`);
+    if (r.enabled === false) renderRecorder(r);
+    return;
+  }
+  err.hidden = true;
   renderRecorder(r);
 });
 for (const action of ['prev', 'next', 'stop']) {
-  $(`#rec-${action}`).addEventListener('click', async () => renderRecorder(await api(`/api/record/${action}`, {})));
+  $(`#rec-${action}`).addEventListener('click', async () => {
+    const r = await api(`/api/record/${action}`, {});
+    if (!r.ok) { log('system', r.reason || 'Recording step failed'); return; }
+    renderRecorder(r);
+  });
 }
 
 $('#voice-btn').addEventListener('click', (e) => {
@@ -404,6 +427,7 @@ $('#rest-btn').addEventListener('click', async (e) => {
 });
 
 api('/api/exercises').then((list) => { for (const e of list) ui.exercises[e.id] = e; }).catch(() => {});
+api('/api/record/status').then(renderRecorder).catch(() => {});
 api('/api/status').then((s) => {
   ui.side = s.side || 'right';
   document.querySelectorAll('[data-side]').forEach((x) => x.classList.toggle('on', x.dataset.side === ui.side));

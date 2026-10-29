@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Physio Buddy clinic station: live shoulder range-of-motion measurement and exercise coaching." />
+    <meta name="description" content="Auri clinic station: live shoulder range-of-motion measurement and exercise coaching." />
     <meta name="theme-color" content="#0b0f14" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <title>Physio Buddy Station</title>
+    <title>Auri Station</title>
   </head>
   <body>
     <a class="skip" href="#stage">Skip to live view</a>
@@ -15,7 +15,7 @@
     <header class="top">
       <div class="brand">
         <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 20c3-7 11-10 15-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="9" cy="20" r="2.6" fill="currentColor"/></svg>
-        <div><strong>Physio Buddy</strong><span>Clinic station</span></div>
+        <div><strong>Auri</strong><span>Clinic station</span></div>
       </div>
 
       <nav class="session" aria-label="Session">
@@ -90,7 +90,7 @@
           </header>
           <div class="angle"><span id="elev">--</span><small id="elev-note">True elevation, arm against trunk</small></div>
           <div class="meter" aria-hidden="true"><i id="progress-bar"></i></div>
-          <div class="target"><label for="target">Target</label><input type="range" id="target" min="30" max="180" step="5" value="120" /><output id="target-val">120°</output></div>
+          <div class="target"><label for="target">Target (demo override)</label><input type="range" id="target" min="30" max="180" step="5" value="120" /><output id="target-val">120°</output><p class="hint">In clinic, the physiotherapist's plan sets the target.</p></div>
           <ol id="phase" class="phase">
             <li data-phase="rest">Rest</li><li data-phase="raising">Raise</li>
             <li data-phase="hold">Hold <b id="hold-t"></b></li><li data-phase="lowering">Lower</li>
@@ -152,6 +152,7 @@
         </label>
         <label class="check"><input type="checkbox" id="rec-consent" required /> Written consent signed (keypoints only, no video)</label>
         <p class="rec-note">Uses the affected side selected above. Turn on Speak so the volunteer hears each block.</p>
+        <p id="rec-error" class="rec-note" hidden></p>
         <button type="submit" class="toggle">Start recording</button>
       </form>
       <div id="rec-live" class="rec-live" hidden>

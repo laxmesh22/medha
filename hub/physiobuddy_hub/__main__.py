@@ -122,7 +122,7 @@ def main(argv=None) -> None:
     r.add_argument("--log", action="store_true", help="write per-frame keypoints + angles to data/sessions")
     r.add_argument("--debug-video", action="store_true", help="serve annotated video at /debug/stream.mjpg")
     r.add_argument("--dataset-dir", default=None,
-                   help="where guided recordings go (default ml/data/real)")
+                   help="enable guided recording into this folder (off if omitted)")
     r.add_argument("--motionnet", default=None,
                    help="PB-MotionNet model dir (default hub/models/motionnet; 'off' = rules only)")
     r.add_argument("--host", default="0.0.0.0")
