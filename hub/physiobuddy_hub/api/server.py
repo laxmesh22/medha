@@ -52,7 +52,7 @@ def create_app(pipeline, status: dict) -> FastAPI:
     @app.get("/api/status")
     def get_status():
         version, state = pipeline.latest_state()
-        return {
+        body = {
             **status,
             "hub_version": __version__,
             "side": pipeline.side,
@@ -60,6 +60,10 @@ def create_app(pipeline, status: dict) -> FastAPI:
             "fps": state["fps"] if state else 0.0,
             "debug_video": pipeline.debug_video,
         }
+        straps = pipeline.strap_status()
+        if straps is not None:
+            body["straps"] = straps
+        return body
 
     @app.post("/api/side")
     def set_side(body: SideBody):

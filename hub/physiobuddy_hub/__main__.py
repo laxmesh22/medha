@@ -5,6 +5,7 @@
     python -m physiobuddy_hub run [--debug-video] [--side left] [--record out.bag] [--log]
     python -m physiobuddy_hub run --bag session.bag      # replay a recording through the full pipeline
     python -m physiobuddy_hub run --sim                  # synthetic patient, no camera (UI development)
+    python -m physiobuddy_hub run --sim --straps auto    # also ingest AURI-ARM / AURI-TRUNK over BLE
 """
 
 from __future__ import annotations
@@ -35,6 +36,17 @@ def _cmd_fetch_models(args) -> None:
         print("fetching", name, "...")
         build_pose_estimator(name, device="cpu")
     print("models cached under hub/models/rtmlib")
+
+
+def _strap_link(spec: str):
+    """``off`` (default) imports nothing from bleak. ``auto`` scans. Otherwise one or more BLE addresses."""
+    if spec == "off":
+        return None
+    from .straps.link import StrapLink
+
+    if spec == "auto":
+        return StrapLink()
+    return StrapLink([part.strip() for part in spec.split(",") if part.strip()])
 
 
 def _cmd_run(args) -> None:
@@ -82,7 +94,7 @@ def _cmd_run(args) -> None:
         source, pose, up_cam=np.asarray(up), side=args.side, min_score=args.min_score,
         log_dir=log_dir, debug_video=args.debug_video,
         meta={"session": session_id, "pose_model": pose.name, "side": args.side},
-        motionnet=motionnet,
+        motionnet=motionnet, straps=_strap_link(args.straps),
     )
     if args.dataset_dir:
         from .recorder import DatasetRecorder
@@ -125,6 +137,8 @@ def main(argv=None) -> None:
                    help="enable guided recording into this folder (off if omitted)")
     r.add_argument("--motionnet", default=None,
                    help="PB-MotionNet model dir (default hub/models/motionnet; 'off' = rules only)")
+    r.add_argument("--straps", default="off",
+                   help="off | auto | BLE address[,address]. Default off, so --sim and CI do not open BLE")
     r.add_argument("--host", default="0.0.0.0")
     r.add_argument("--port", type=int, default=8000)
 

@@ -87,7 +87,7 @@ def guidance_codes(sk: Optional[Skeleton3D], side: str) -> list:
 class CameraPipeline:
     def __init__(self, source, pose_estimator, up_cam: np.ndarray, side: str = "right",
                  min_score: float = 0.4, log_dir: Optional[Path] = None, debug_video: bool = False,
-                 meta: Optional[dict] = None, motionnet=None):
+                 meta: Optional[dict] = None, motionnet=None, straps=None):
         """``motionnet``: a ``MotionNetRunner`` (hybrid judging) or None for rules-only coaching."""
         self.source = source
         self.pose = pose_estimator
@@ -108,6 +108,7 @@ class CameraPipeline:
         self.coach = Coach("flexion")
         self.recorder = None  # set by --dataset-dir; never the training folder by default
         self.nn = motionnet if motionnet is not None and motionnet.available else None
+        self.straps = straps  # StrapLink, or None when --straps off. Not used by the coach.
         self.autodetect = False
         self._auto_votes: deque = deque()
         if log_dir is not None:
@@ -231,6 +232,8 @@ class CameraPipeline:
         return {"ok": True, "n": len(samples), "shrug_baseline": round(base, 4)}
 
     def start(self) -> None:
+        if self.straps is not None:
+            self.straps.start()
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name="camera-pipeline", daemon=True)
         self._thread.start()
@@ -239,8 +242,19 @@ class CameraPipeline:
         self._stop.set()
         if self._thread:
             self._thread.join(timeout=2)
+        if self.straps is not None:
+            self.straps.stop()
         if self._log_fh:
             self._log_fh.close()
+
+    def strap_status(self) -> Optional[dict]:
+        if self.straps is None:
+            return None
+        try:
+            return self.straps.status()
+        except Exception:
+            log.exception("strap status failed")
+            return {"enabled": True, "error": "unavailable"}
 
     # -- outputs ---------------------------------------------------------------------------
     def latest_state(self) -> tuple:
@@ -339,6 +353,9 @@ class CameraPipeline:
                 for u, v in pose2d.keypoints_px],
             "image_aspect": round(frame.intrinsics.width / frame.intrinsics.height, 4),
         }
+        straps = self.strap_status()
+        if straps is not None:
+            state["straps"] = straps
         jpeg = self._annotate(frame, pose2d) if self.debug_video else None
         with self._lock:
             self._state = state

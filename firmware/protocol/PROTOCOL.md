@@ -1,7 +1,7 @@
 # Auri strap BLE protocol v2
 
 Fixed contract between the strap firmware (`firmware/auri_strap/`) and the hub. The C header
-(`../auri_strap/src/auri_ble.h`) and the Python decoder (`auri_ble.py`) implement exactly this page; change all three together and bump
+(`../auri_strap/src/auri_ble.h`) and the Python decoder (`hub/physiobuddy_hub/straps/protocol.py`, re-exported by `auri_ble.py`) implement exactly this page; change all three together and bump
 `PROTOCOL_VERSION`. v1 → v2: combined 37-byte IMU_DATA, notify-drop counter in STATUS. Based on `agenthandoff.md` §7, with the time-sync ping from `jetson_realsense_ai_design.md`.
 
 All multi-byte fields are **little-endian**. Every v1 packet fits the default 20-byte ATT payload, so a client that
