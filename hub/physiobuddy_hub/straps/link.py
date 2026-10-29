@@ -70,6 +70,7 @@ def sensor_view(sample: Optional[SensorSample], now_ms: float, offset_ms: Option
         "reset": False if sample is None else sample.reset,
         "age_ms": None,
         "available": False,
+        "seq": None if sample is None else sample.seq,
     }
     if sample is None or offset_ms is None:
         return view
@@ -128,6 +129,7 @@ class StrapLink:
         self._thread: Optional[threading.Thread] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._async_stop: Optional[asyncio.Event] = None
+        self.generation = 0  # bumps on every new connection; a reconnect drops the yaw reference
 
     def start(self) -> None:
         if self._thread is not None:
@@ -149,7 +151,19 @@ class StrapLink:
         now = time.time() * 1000.0 if now_ms is None else now_ms
         with self._lock:
             devices = [self._device_view(dev, now) for dev in self._devices.values()]
-        return {"enabled": True, "mode": self.mode, "devices": devices}
+        return {"enabled": True, "mode": self.mode, "generation": self.generation, "devices": devices}
+
+    def snapshot(self, now_ms: Optional[float] = None) -> dict:
+        """Latest sample per sensor name. Unavailable sensors have None pose fields."""
+        now = time.time() * 1000.0 if now_ms is None else now_ms
+        with self._lock:
+            merged: dict = {}
+            for dev in self._devices.values():
+                for name, sensor in self._device_view(dev, now)["sensors"].items():
+                    prev = merged.get(name)
+                    if prev is None or (sensor.get("available") and not prev.get("available")):
+                        merged[name] = sensor
+            return merged
 
     def _device_view(self, dev: _Device, now: float) -> dict:
         while dev.rx_ms and now - dev.rx_ms[0] > RATE_WINDOW_MS:
@@ -381,7 +395,8 @@ class StrapLink:
         async with BleakClient(address, disconnected_callback=on_disc, timeout=15.0) as client:
             with self._lock:
                 self._ensure(address, name, rssi).connected = True
-            log.info("strap connected %s", address)
+                self.generation += 1
+            log.info("strap connected %s (generation %s)", address, self.generation)
             await client.start_notify(IMU_DATA_UUID, lambda _s, data: self._on_imu(address, bytes(data)))
             await client.start_notify(RAW_DATA_UUID, lambda _s, data: self._on_raw(address, bytes(data)))
             await client.start_notify(STATUS_UUID, lambda _s, data: self._on_status(address, bytes(data)))

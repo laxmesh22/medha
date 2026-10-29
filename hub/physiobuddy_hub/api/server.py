@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from .. import __version__
 from ..pipeline import RecordingOff
+from ..straps.calibrate import collect_samples
 
 STATIC_DIR = Path(__file__).parent / "static"
 WS_MAX_HZ = 30.0
@@ -131,6 +132,24 @@ def create_app(pipeline, status: dict) -> FastAPI:
     @app.get("/api/record/status")
     def record_status():
         return pipeline.record_status()
+
+    @app.get("/api/straps/calibration")
+    def strap_calibration():
+        if pipeline.straps is None:
+            return {"enabled": False, "state": "none", "time": None, "sensors": []}
+        return {"enabled": True, **pipeline.calibration_view()}
+
+    @app.post("/api/straps/calibrate/npose")
+    async def strap_npose():
+        if pipeline.straps is None:
+            return JSONResponse({"ok": False, "reason": "straps are off"}, status_code=409)
+        return pipeline.finish_npose(await collect_samples(pipeline.straps, 2.0))
+
+    @app.post("/api/straps/calibrate/raise")
+    async def strap_raise():
+        if pipeline.straps is None:
+            return JSONResponse({"ok": False, "reason": "straps are off"}, status_code=409)
+        return pipeline.finish_raise(await collect_samples(pipeline.straps, 4.0))
 
     @app.post("/api/calibrate/rest")
     async def calibrate_rest(seconds: float = 2.0):

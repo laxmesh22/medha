@@ -15,6 +15,7 @@ import numpy as np
 from . import __version__
 from .capture.lift import lift_pose
 from .core.coach import EXERCISES, Coach
+from .straps.calibrate import judge_npose, strap_frame
 from .core.quality import SegmentTracker
 from .core.skeleton_kin import SkeletonKinematics
 from .datatypes import (
@@ -109,6 +110,9 @@ class CameraPipeline:
         self.recorder = None  # set by --dataset-dir; never the training folder by default
         self.nn = motionnet if motionnet is not None and motionnet.available else None
         self.straps = straps  # StrapLink, or None when --straps off. Not used by the coach.
+        self.strap_cal = None
+        self._strap_cal_time = None
+        self._strap_gen = None
         self.autodetect = False
         self._auto_votes: deque = deque()
         if log_dir is not None:
@@ -119,11 +123,15 @@ class CameraPipeline:
     # -- control ---------------------------------------------------------------------------
     def set_side(self, side: str) -> None:
         with self._lock:
+            changed = getattr(self, "side", None) != side
             self.side = side
             self.kin = SkeletonKinematics(side)
             self.segments = SegmentTracker(side)
             if self.nn is not None:
                 self.nn.reset()
+            if changed:
+                self.strap_cal = None
+                self._strap_cal_time = None
 
     def set_autodetect(self, enabled: bool) -> dict:
         with self._lock:
@@ -247,6 +255,57 @@ class CameraPipeline:
         if self._log_fh:
             self._log_fh.close()
 
+    def _sync_strap_cal(self) -> None:
+        """A reconnect gives the BNO a new yaw reference, so the saved N-pose no longer applies."""
+        if self.strap_cal is None or self.straps is None:
+            return
+        gen = getattr(self.straps, "generation", None)
+        if gen is not None and gen != self._strap_gen:
+            self.strap_cal = None
+            self._strap_cal_time = None
+
+    def calibration_view(self) -> dict:
+        self._sync_strap_cal()
+        if self.strap_cal is None:
+            return {"state": "none", "time": None, "sensors": []}
+        raised = sorted(name for name, done in self.strap_cal.forward_raise.items() if done)
+        return {
+            "state": "npose+raise" if raised else "npose",
+            "time": self._strap_cal_time,
+            "sensors": sorted(self.strap_cal.ref),
+            "forward_raise": raised,
+        }
+
+    def finish_npose(self, samples: dict) -> dict:
+        judged = judge_npose(samples)
+        sensors = judged.get("sensors") or {}
+        if not judged["ok"]:
+            return {"ok": False, "reason": judged["reason"], "sensors": sensors}
+        with self._lock:
+            from .core.strap_kin import StrapCalibration
+
+            self.strap_cal = StrapCalibration.from_npose(self.side, judged["quats"])
+            self._strap_cal_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            self._strap_gen = None if self.straps is None else getattr(self.straps, "generation", None)
+        return {"ok": True, "sensors": sensors, "calibration": self.calibration_view()}
+
+    def finish_raise(self, samples: dict) -> dict:
+        self._sync_strap_cal()
+        if self.strap_cal is None:
+            return {"ok": False, "reason": "stand still in the N-pose first", "refined": []}
+        gyro = {}
+        for name, rows in samples.items():
+            rates = [g for _q, g in rows if g is not None]
+            if rates:
+                gyro[name] = np.degrees(np.asarray(rates, float))
+        before = set(self.strap_cal.forward_raise)
+        self.strap_cal.refine_with_forward_raise(gyro)
+        refined = sorted(set(self.strap_cal.forward_raise) - before)
+        if not refined:
+            return {"ok": False, "reason": "raise not seen; move the straight arm slowly forward", "refined": []}
+        self._strap_cal_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        return {"ok": True, "refined": refined, "calibration": self.calibration_view()}
+
     def strap_status(self) -> Optional[dict]:
         if self.straps is None:
             return None
@@ -302,10 +361,14 @@ class CameraPipeline:
                 if self._rest_samples is not None and angles.shrug_index.value is not None:
                     self._rest_samples.append(angles.shrug_index.value)
         angles_d = angles.to_dict() if angles else None
+        self._sync_strap_cal()
+        strap_angles, imu_block = (None, None)
+        if self.straps is not None and self.strap_cal is not None:
+            strap_angles, imu_block = strap_frame(self.strap_cal, self.straps.snapshot())
         with self._lock:
             t_s = frame.timestamp_ms / 1000.0
             nn_out = None if self.nn is None else self.nn.push(sk, angles_d, side, self.up_cam,
-                                                               kin.shrug_baseline)
+                                                               kin.shrug_baseline, imu=imu_block)
             self._autodetect_step(t_s, nn_out)
             coach_state = self.coach.update(t_s, angles_d, nn=nn_out)
             if self.recorder is None:
@@ -355,6 +418,8 @@ class CameraPipeline:
         }
         straps = self.strap_status()
         if straps is not None:
+            straps["angles"] = strap_angles
+            straps["calibration"] = self.calibration_view()
             state["straps"] = straps
         jpeg = self._annotate(frame, pose2d) if self.debug_video else None
         with self._lock:

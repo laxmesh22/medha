@@ -406,6 +406,7 @@ function render(state) {
     }
   }
   noteLive(state);
+  renderStraps(state);
   renderRecorder(state.recorder);
   renderAutodetect(state.autodetect, c);
   vision.update(state);
@@ -452,6 +453,66 @@ connectLive(render, (online) => {
   if (!online) { $('#guidance').textContent = 'Station offline: reconnecting'; $('#guidance').dataset.ok = 'no'; }
   else if (awaitingCheckin) setPaused(true);
 });
+
+const STRAP_ROWS = [
+  ['elevation', 'Elevation'],
+  ['apparent_elevation', 'Apparent elevation'],
+  ['plane_of_elevation', 'Plane'],
+  ['elbow_flexion', 'Elbow bend'],
+  ['rotation', 'Rotation'],
+  ['trunk_lean_sagittal', 'Trunk lean, front/back'],
+  ['trunk_lean_lateral', 'Trunk lean, sideways'],
+];
+const STRAP_CAL = { none: 'Not calibrated', npose: 'N-pose saved', 'npose+raise': 'N-pose and forward raise' };
+
+function deg(m) {
+  return m && m.value != null ? `${Math.round(m.value)}°` : 'unavailable';
+}
+
+function renderStraps(state) {
+  const card = $('#straps-card');
+  if (!state.straps) { card.hidden = true; return; }
+  card.hidden = false;
+  const devs = state.straps.devices || [];
+  $('#straps-link').textContent = devs.length
+    ? devs.map((d) => `${d.name || d.address || 'strap'} · ${d.connected ? 'connected' : 'off'} · ${d.packet_rate_hz == null ? '--' : Math.round(d.packet_rate_hz)} Hz`).join('  ')
+    : 'No strap connected';
+  const cal = state.straps.calibration || { state: 'none' };
+  const sensors = (cal.sensors || []).join(', ');
+  $('#straps-cal').textContent = `${STRAP_CAL[cal.state] || cal.state}${sensors ? ` · ${sensors}` : ''}`;
+  const box = $('#straps-compare');
+  box.innerHTML = '';
+  const cam = state.angles;
+  const strap = state.straps.angles;
+  for (const [key, label] of STRAP_ROWS) {
+    const row = document.createElement('div');
+    row.className = 'metric';
+    const camM = cam?.[key];
+    const stM = strap?.[key];
+    row.innerHTML = `<dt>${label}</dt><div class="strap-pair">`
+      + `<div><span>Camera</span><b class="${camM && camM.value != null ? '' : 'missing'}">${deg(camM)}</b></div>`
+      + `<div><span>Strap</span><b class="${stM && stM.value != null ? '' : 'missing'}">${deg(stM)}</b></div></div>`;
+    box.appendChild(row);
+  }
+}
+
+async function strapCalibrate(path, busy) {
+  const msg = $('#straps-msg');
+  const buttons = ['#straps-npose', '#straps-raise'].map((id) => $(id));
+  buttons.forEach((b) => { b.disabled = true; });
+  msg.hidden = false;
+  msg.textContent = busy;
+  let result;
+  try {
+    result = await fetch(path, { method: 'POST' }).then((r) => r.json());
+  } catch {
+    result = { ok: false, reason: 'Could not reach the station' };
+  }
+  buttons.forEach((b) => { b.disabled = false; });
+  if (result.ok) { msg.hidden = true; msg.textContent = ''; return; }
+  msg.hidden = false;
+  msg.textContent = result.reason || 'Calibration failed';
+}
 
 // ---------------------------------------------------------------- controls
 async function api(path, body) {
@@ -553,6 +614,9 @@ $('#mic-btn').addEventListener('click', (e) => {
   e.currentTarget.setAttribute('aria-pressed', String(on));
 });
 document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click', () => agent.hear(b.dataset.ask)));
+
+$('#straps-npose').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/npose', 'Stand still, arms by your sides…'));
+$('#straps-raise').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/raise', 'One slow straight-arm forward raise…'));
 
 $('#rest-btn').addEventListener('click', async (e) => {
   const btn = e.currentTarget;

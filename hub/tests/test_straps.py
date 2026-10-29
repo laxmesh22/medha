@@ -132,3 +132,135 @@ def test_fake_link_shows_in_api_status():
     body = TestClient(create_app(pipeline, {"session": "s"})).get("/api/status").json()
     assert body["session"] == "s"
     assert body["straps"]["devices"][0]["address"] == "AA"
+
+
+def _pipeline():
+    import numpy as np
+
+    from physiobuddy_hub.capture.realsense import DEFAULT_UP
+    from physiobuddy_hub.datatypes import NUM_KEYPOINTS, CameraFrame, Intrinsics, Pose2D
+    from physiobuddy_hub.pipeline import CameraPipeline
+
+    intr = Intrinsics(848, 480, 425.0, 425.0, 424.0, 240.0)
+
+    class Src:
+        n = 0
+
+        def latest(self, timeout=1.0):
+            self.n += 1
+            return CameraFrame(color=np.zeros((480, 848, 3), np.uint8),
+                               depth_m=np.full((480, 848), 2.0, np.float32),
+                               intrinsics=intr, timestamp_ms=1000.0 + self.n, frame_number=self.n)
+
+    class Pose:
+        name = "fake"
+
+        def __call__(self, _bgr):
+            return Pose2D(np.tile([424.0, 240.0], (NUM_KEYPOINTS, 1)), np.full(NUM_KEYPOINTS, 0.9))
+
+    return CameraPipeline(Src(), Pose(), up_cam=DEFAULT_UP, side="right")
+
+
+def test_npose_accepts_still_and_rejects_motion():
+    from physiobuddy_hub.straps.calibrate import judge_npose
+
+    still = {"upper_arm": [([1.0, 0.0, 0.0, 0.0], [0.02, 0.0, 0.0])] * 60}
+    accepted = judge_npose(still)
+    assert accepted["ok"] and accepted["sensors"]["upper_arm"]["samples"] == 60
+    moving = {"upper_arm": [([1.0, 0.0, 0.0, 0.0], [0.4, 0.0, 0.0])] * 60}
+    rejected = judge_npose(moving)
+    assert rejected["ok"] is False and "moving" in rejected["reason"]
+    short = {"upper_arm": [([1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0])] * 12}
+    assert judge_npose(short)["ok"] is False and "fewer than 50" in judge_npose(short)["reason"]
+
+
+def test_side_change_and_reconnect_clear_calibration():
+    pipeline = _pipeline()
+    pipeline.strap_cal = object()
+    pipeline.set_side("left")
+    assert pipeline.strap_cal is None
+    pipeline.strap_cal = object()
+    pipeline._strap_gen = 1
+
+    class Link:
+        generation = 2
+
+        def status(self):
+            return {"enabled": True, "mode": "fake", "devices": []}
+
+        def snapshot(self, now_ms=None):
+            return {}
+
+    pipeline.straps = Link()
+    pipeline._process(pipeline.source.latest())
+    assert pipeline.strap_cal is None
+    _version, state = pipeline.latest_state()
+    assert state["straps"]["calibration"]["state"] == "none"
+    assert state["straps"]["angles"] is None
+
+
+def test_straps_off_leaves_the_state_without_straps():
+    pipeline = _pipeline()
+    pipeline._process(pipeline.source.latest())
+    _version, state = pipeline.latest_state()
+    assert "straps" not in state
+
+
+def test_calibrated_pose_matches_elevation_and_imu_width():
+    import numpy as np
+
+    from physiobuddy_hub.core.strap_kin import (
+        SENSORS, StrapCalibration, axis_angle, matrix_to_quat, nominal_mount,
+    )
+    from physiobuddy_hub.ml.features import D_IMU, imu_features
+
+    y_up = np.array([[1.0, 0, 0], [0, 0, -1.0], [0, 1.0, 0]])
+    ez = np.array([0.0, 0, 1.0])
+    rng = np.random.default_rng(5)
+    yaws = {s: axis_angle(ez, rng.uniform(-np.pi, np.pi)) for s in SENSORS}
+
+    def wear(segs):
+        out = {}
+        for name, rot in segs.items():
+            mount = nominal_mount(name, "right")
+            out[name] = matrix_to_quat(yaws[name] @ y_up @ rot @ mount.T)
+        return out
+
+    still = wear({s: np.eye(3) for s in SENSORS})
+    cal = StrapCalibration.from_npose("right", {s: [still[s]] * 8 for s in SENSORS})
+    raised = axis_angle(ez, np.radians(90))
+    posed = wear({"trunk": np.eye(3), "upper_arm": raised, "forearm": raised})
+
+    class Link:
+        generation = 3
+
+        def snapshot(self, now_ms=None):
+            return {s: {"available": True, "quat": [float(v) for v in posed[s]], "gyro": [0.0, 0.0, 0.01],
+                        "seq": 4} for s in SENSORS}
+
+        def status(self):
+            return {"enabled": True, "mode": "fake", "devices": [
+                {"name": "AURI-ARM", "connected": True, "packet_rate_hz": 50}]}
+
+    class Net:
+        available = True
+
+        def reset(self):
+            pass
+
+        def push(self, sk, angles, side, up, shrug=None, imu=None):
+            self.imu = imu
+            return None
+
+    pipeline = _pipeline()
+    pipeline.straps = Link()
+    pipeline.strap_cal = cal
+    pipeline._strap_gen = 3
+    pipeline.nn = Net()
+    pipeline._process(pipeline.source.latest())
+    _version, state = pipeline.latest_state()
+    elev = state["straps"]["angles"]["elevation"]["value"]
+    assert elev is not None and abs(elev - 90) < 2
+    vec, ok = imu_features(pipeline.nn.imu)
+    assert ok and vec.shape == (D_IMU,)
+    assert state["coach"]["exercise"]["id"] == "flexion"

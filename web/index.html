@@ -121,6 +121,17 @@
           <header><h3>Vision</h3><span id="model-name">pose model</span><button id="video-btn" class="btn-quiet" hidden>Show video</button></header>
           <div class="vision-wrap"><img id="video" alt="Live camera image with tracked skeleton" hidden /><canvas id="vision"></canvas></div>
         </section>
+
+        <section id="straps-card" class="metrics" hidden aria-label="Straps">
+          <header><h3>Straps</h3><span id="straps-link"></span></header>
+          <p id="straps-cal" class="rec-note"></p>
+          <div class="rec-btns">
+            <button type="button" id="straps-npose" class="btn-quiet">Calibrate: stand still (N-pose)</button>
+            <button type="button" id="straps-raise" class="btn-quiet">Calibrate: forward raise</button>
+          </div>
+          <p id="straps-msg" class="rec-note" hidden></p>
+          <dl id="straps-compare"></dl>
+        </section>
       </aside>
 
       <section class="lower" aria-label="Session data">

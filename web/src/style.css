@@ -276,6 +276,15 @@ input[type='checkbox'], input[type='range'] { accent-color: var(--accent); }
 .metric .note { font-size: 12px; color: var(--t3); min-height: 1.2em; }
 .metric[data-quality='low'] .val { color: var(--warn); }
 .metric[data-quality='unavailable'] .val { color: var(--t3); }
+#straps-card header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+#straps-card .rec-btns { flex-direction: column; align-items: stretch; }
+#straps-link { font: 500 12px var(--mono); color: var(--t3); text-align: right; }
+#straps-compare { margin: 12px 0 0; }
+.strap-pair { display: flex; gap: 18px; margin-top: 4px; }
+.strap-pair div { min-width: 88px; }
+.strap-pair span { display: block; font-size: 12px; color: var(--t3); }
+.strap-pair b { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.strap-pair b.missing { color: var(--t3); font-size: 14px; font-weight: 500; }
 .flags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
 .flags span { padding: 4px 9px; border-radius: 6px; font-size: 13px; font-weight: 550; background: var(--warn-soft); color: var(--warn); }
 .flags span.info { background: var(--s2); color: var(--t2); }
