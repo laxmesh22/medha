@@ -143,11 +143,12 @@ class WebcamSource:
     """Spawns the worker and keeps only the newest frame."""
 
     def __init__(self, camera: int = 0, side: str = "right", fps: float = 30.0,
-                 root: Path | None = None, preview: bool = True):
+                 root: Path | None = None, preview: bool = True, exposure: str = "auto"):
         self.camera = int(camera)
         self.side = side
         self.fps = float(fps)
         self.preview = bool(preview)
+        self.exposure = exposure if exposure == "auto" else str(float(exposure))
         self._preview: bytes | None = None
         self._preview_frame: int | None = None
         self._preview_t_ms: float | None = None
@@ -183,7 +184,8 @@ class WebcamSource:
         self._proc = subprocess.Popen(
             [str(python), "-u", str(worker), "--camera", str(self.camera),
              "--side", self.side, "--fps", str(self.fps),
-             "--preview", "on" if self.preview else "off"],
+             "--preview", "on" if self.preview else "off",
+             f"--exposure={self.exposure}"],
             cwd=str(checkout),
             env=env,
             stdout=subprocess.PIPE,

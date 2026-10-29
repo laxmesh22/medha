@@ -101,7 +101,8 @@ def _cmd_run(args) -> None:
         from .capture.auri_cv import WebcamSource
 
         preview = args.camera_preview != "off"
-        source = WebcamSource(camera=args.webcam, side=args.side, preview=preview)
+        source = WebcamSource(camera=args.webcam, side=args.side, preview=preview,
+                              exposure=args.cam_exposure)
         source.start()
 
         class _UnusedPose:
@@ -178,6 +179,8 @@ def main(argv=None) -> None:
     r.add_argument("--debug-video", action="store_true", help="serve annotated video at /debug/stream.mjpg")
     r.add_argument("--camera-preview", choices=["on", "off"], default="on",
                    help="webcam only: live image under the skeleton (default on). Off is keypoints only")
+    r.add_argument("--cam-exposure", default="auto",
+                   help="webcam only: auto, or a manual exposure such as -4 (default auto)")
     r.add_argument("--dataset-dir", default=None,
                    help="enable guided recording into this folder (off if omitted)")
     r.add_argument("--motionnet", default=None,

@@ -87,7 +87,7 @@ export class VisionPanel {
       // Fetch and JPEG decode stay off the UI thread. Only the newest bitmap is posted,
       // so a slow paint cannot build a queue of old frames.
       const source = [
-        'let after = -1, live = false, posted = false, pending = null, started = false;',
+        'let after = -1, live = false, posted = false, pending = null, started = false, base = "";',
         'function flush() {',
         '  if (!pending || posted) return;',
         '  posted = true; const shot = pending; pending = null;',
@@ -96,14 +96,14 @@ export class VisionPanel {
         'self.onmessage = (ev) => {',
         '  if (ev.data === "stop") { live = false; return; }',
         '  if (ev.data === "ack") { posted = false; flush(); return; }',
-        '  if (ev.data === "start") { live = true; if (!started) { started = true; pump(); } }',
+        '  if (ev.data && ev.data.cmd === "start") { live = true; base = ev.data.url; if (!started) { started = true; pump(); } }',
         '};',
         'async function pump() {',
         '  while (true) {',
         '    if (!live) { await new Promise((r) => setTimeout(r, 50)); continue; }',
         '    let res;',
-        '    try { res = await fetch("/api/camera/preview.jpg?after=" + after, { cache: "no-store" }); }',
-        '    catch (err) { await new Promise((r) => setTimeout(r, 200)); continue; }',
+        '    try { res = await fetch(base + "?after=" + after, { cache: "no-store" }); }',
+        '    catch (err) { self.postMessage({ error: String(err) }); await new Promise((r) => setTimeout(r, 200)); continue; }',
         '    if (!live || res.status === 204) continue;',
         '    const frame = Number(res.headers.get("X-Auri-Frame"));',
         '    const tMs = Number(res.headers.get("X-Auri-Time"));',
@@ -117,9 +117,13 @@ export class VisionPanel {
         '    flush();',
         '  }',
         '}',
+        'self.postMessage({ hello: true });',
       ].join('\n');
       this._worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
+      this._worker.onerror = (ev) => { this.error = String(ev.message || ev.error || ev); };
       this._worker.onmessage = (ev) => {
+        if (ev.data?.hello) { this.workerReady = true; return; }
+        if (ev.data?.error) { this.error = ev.data.error; return; }
         const shot = ev.data;
         if (!this.live || (this.preview && shot.frame < this.preview.frame)) {
           shot.bmp.close();
@@ -136,7 +140,7 @@ export class VisionPanel {
         this._worker.postMessage('ack');
       };
     }
-    this._worker.postMessage('start');
+    this._worker.postMessage({ cmd: 'start', url: `${location.origin}/api/camera/preview.jpg` });
   }
 
   stopPreview() {
@@ -166,7 +170,7 @@ export class VisionPanel {
       if (shot.frame !== this.lastPainted) {
         if (this.lastPainted != null) {
           this.closed += 1;
-          if (this.lastMatched) this.matches += 1;
+          if (this.lastMatched || this.byFrame.has(this.lastPainted)) this.matches += 1;
         }
         this.lastPainted = shot.frame;
         this.lastMatched = this.byFrame.has(shot.frame);
