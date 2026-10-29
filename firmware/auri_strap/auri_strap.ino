@@ -11,8 +11,8 @@
 #include <Wire.h>
 #include <NimBLEDevice.h>
 #include <Adafruit_DRV2605.h>
-#include "SparkFun_BNO08x_Arduino_Library.h"
 #include "board.h"
+#include "src/bno_lite.h"  // own SH-2 driver: the SparkFun/Adafruit ones allow only one BNO08x per MCU
 
 using namespace auri;
 
@@ -24,7 +24,7 @@ static const uint32_t STATUS_EVERY_MS = 2000;
 // ---------------------------------------------------------------------------------------------------------------------
 struct Imu {
   ImuSlot slot;
-  BNO08x dev;
+  BnoLite dev;
   bool present = false;
   bool streaming = false;  // produced a sample within SILENT_MS
   bool resetFlag = false;  // sticky until the next packet of this sensor
@@ -67,25 +67,31 @@ static bool i2cAck(uint8_t addr) {
 static uint32_t reportIntervalUs() { return 1000000UL / rateHz; }
 
 static bool enableReports(Imu& m) {
-  uint16_t ms = (uint16_t)(1000 / rateHz);
-  bool ok = m.dev.enableGameRotationVector(ms);
-  ok = m.dev.enableGyro(ms) && ok;
-  ok = m.dev.enableGravity(ms) && ok;
-  if (!ok) i2cErrors = i2cErrors < 0xFFFF ? i2cErrors + 1 : i2cErrors;
+  uint32_t us = reportIntervalUs();
+  bool ok = m.dev.enable(BnoLite::R_GAME_RV, us);
+  ok = m.dev.enable(BnoLite::R_GYRO_CAL, us) && ok;
+  ok = m.dev.enable(BnoLite::R_GRAVITY, us) && ok;
   return ok;
+}
+
+// Both BNOs share the RST line when it is wired (handoff §6.1 has one D3), so a hard reset hits every sensor.
+static void hardResetImus() {
+  pinMode(PIN_RST, OUTPUT);
+  digitalWrite(PIN_RST, LOW);
+  delay(10);
+  digitalWrite(PIN_RST, HIGH);
+  delay(100);
 }
 
 static bool startImu(Imu& m) {
   if (!i2cAck(m.slot.address)) return false;
-  int rst = AURI_BNO_RST_WIRED ? PIN_RST : -1;
-  if (!m.dev.begin(m.slot.address, Wire, -1, rst)) {
-    i2cErrors = i2cErrors < 0xFFFF ? i2cErrors + 1 : i2cErrors;
-    return false;
-  }
+  if (!m.dev.begin(Wire, m.slot.address)) return false;
   enableReports(m);
   m.present = true;
   m.lastSampleMs = millis();
-  Serial.printf("imu sensor %u at 0x%02X: started\n", m.slot.sensorId, m.slot.address);
+  Serial.printf("imu sensor %u at 0x%02X: started (part %lu, sw %u.%u.%u build %lu, reset cause %u)\n",
+                m.slot.sensorId, m.slot.address, (unsigned long)m.dev.partNumber, m.dev.swMajor, m.dev.swMinor,
+                m.dev.swPatch, (unsigned long)m.dev.swBuild, m.dev.resetCause);
   return true;
 }
 
@@ -97,8 +103,14 @@ static void detectImus() {
 static void recoverImu(Imu& m) {
   m.lastRecoverMs = millis();
   Serial.printf("imu sensor %u silent: recovering\n", m.slot.sensorId);
-  if (AURI_BNO_RST_WIRED) m.dev.hardwareReset();
-  if (!startImu(m)) m.present = false;  // detectImus() keeps looking for it
+  if (!startImu(m)) {  // soft reset first; the shared RST line only if that fails
+    if (AURI_BNO_RST_WIRED) {
+      hardResetImus();
+      for (size_t i = 0; i < IMU_COUNT; i++)
+        if (&imus[i] != &m && imus[i].present) imus[i].dev.takeReset(), enableReports(imus[i]);
+    }
+    if (!startImu(m)) m.present = false;  // detectImus() keeps looking for it
+  }
   m.resetFlag = true;
 }
 
@@ -120,36 +132,27 @@ static void sendImuPacket(Imu& m, bool valid) {
 // Drain every event the sensor has queued; send one packet per new game-rotation-vector sample.
 static void pollImu(Imu& m) {
   if (!m.present) return;
-  if (m.dev.wasReset()) {  // the BNO rebooted on its own: reports are gone, re-enable them
+  uint8_t got = m.dev.poll();
+  if (m.dev.takeReset()) {  // the BNO rebooted on its own: reports are gone, re-enable them
     Serial.printf("imu sensor %u reset itself: re-enabling reports\n", m.slot.sensorId);
     enableReports(m);
     m.resetFlag = true;
   }
-  for (int n = 0; n < 8 && m.dev.getSensorEvent(); n++) {
-    switch (m.dev.getSensorEventID()) {
-      case SENSOR_REPORTID_GAME_ROTATION_VECTOR:
-        m.q[0] = m.dev.getGameQuatReal();
-        m.q[1] = m.dev.getGameQuatI();
-        m.q[2] = m.dev.getGameQuatJ();
-        m.q[3] = m.dev.getGameQuatK();
-        m.accuracy = m.dev.getQuatAccuracy() & 0x03;
-        m.lastSampleMs = millis();
-        m.streaming = true;
-        if (connected && streamOn) sendImuPacket(m, true);
-        break;
-      case SENSOR_REPORTID_GYROSCOPE_CALIBRATED:
-        m.gyro[0] = m.dev.getGyroX();
-        m.gyro[1] = m.dev.getGyroY();
-        m.gyro[2] = m.dev.getGyroZ();
-        m.gyroOk = true;
-        break;
-      case SENSOR_REPORTID_GRAVITY:
-        m.grav[0] = m.dev.getGravityX();
-        m.grav[1] = m.dev.getGravityY();
-        m.grav[2] = m.dev.getGravityZ();
-        m.gravOk = true;
-        break;
-    }
+  // gyro and gravity first, so the packet sent for this rotation sample carries the newest of both
+  if (got & BnoLite::NEW_GYRO) {
+    memcpy(m.gyro, m.dev.gyro, sizeof(m.gyro));
+    m.gyroOk = true;
+  }
+  if (got & BnoLite::NEW_GRAVITY) {
+    memcpy(m.grav, m.dev.gravity, sizeof(m.grav));
+    m.gravOk = true;
+  }
+  if (got & BnoLite::NEW_GAME_RV) {
+    memcpy(m.q, m.dev.quat, sizeof(m.q));
+    m.accuracy = m.dev.quatAccuracy;
+    m.lastSampleMs = millis();
+    m.streaming = true;
+    if (connected && streamOn) sendImuPacket(m, true);
   }
   uint32_t now = millis();
   if (now - m.lastSampleMs > SILENT_MS) {
@@ -188,7 +191,9 @@ static void sendStatus() {
     if (imus[i].streaming) s.ok |= 1 << imus[i].slot.sensorId;
   }
   s.batteryMv = batteryMv();
-  s.i2cErrors = i2cErrors;
+  uint32_t errs = i2cErrors;
+  for (size_t i = 0; i < IMU_COUNT; i++) errs += imus[i].dev.i2cErrors;
+  s.i2cErrors = errs > 0xFFFF ? 0xFFFF : (uint16_t)errs;
   s.streaming = streamOn;
   s.rateHz = rateHz;
   s.haptics = hapticsPresent;
