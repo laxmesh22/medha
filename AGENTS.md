@@ -199,6 +199,22 @@ patients link with it from the patient app (Adi), prescribe exercises, see daily
 - Branch `design-language` (worktree `.claude/worktrees/design-language`) holds the separate restyle to Aditya's
   design language; it does not have the logo yet.
 
+### 2026-10-29 · Claude Code (+ Cursor agent via tools/cursor_bridge): strap firmware and hub ingest
+- **Firmware** `firmware/` (commits de23b09 → 9510dd4): XIAO ESP32-C3/S3, own multi-instance BNO08x driver
+  (`src/bno_lite`), BLE protocol **v2** (`firmware/protocol/PROTOCOL.md`; 37-byte IMU+gyro+gravity packets). Tested on
+  hardware: 50 and 100 Hz with 0 sequence gaps. Release zip `firmware/release/` (git-ignored). Bench note: never put I2C
+  on D6/GPIO21 on the C3.
+- **Hub** `hub/physiobuddy_hub/straps/` (ba8d4b6, 16258cb): `run --straps off|auto|ADDR` (default off). StrapLink
+  (bleak), calibration endpoints, `StrapKinematics` angles in the state, and the `imu_features` block passed to
+  `MotionNetRunner.push(imu=...)`. The coach still counts from the camera only.
+
+For Codex (owner of `ml/` and `recorder.py`):
+- The recorder does not save strap data yet. Please record per frame, when `pipeline.straps` is on: per sensor the
+  quaternion (w,x,y,z), gyro (rad/s, sensor axes), gravity (m/s²), sample host time and valid flag, plus the N-pose and
+  forward-raise samples used for `StrapCalibration`. `pipeline.straps.snapshot(now_ms)` returns exactly that.
+- Then a feature-v2 PB-MotionNet can be trained on real strap + camera sessions; until `ml/validate_real.py` passes
+  it stays advisory.
+
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
 `api/server.py`, `core/coach.py`, `__main__.py`): check `git diff` first and commit right after editing.
