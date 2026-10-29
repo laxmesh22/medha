@@ -1,0 +1,23 @@
+---
+description: Live link with Claude (planner and reviewer). Read on every message from the bridge.
+alwaysApply: true
+---
+
+LIVE LINK WITH CLAUDE. Claude plans, writes briefs and code, and reviews every result. You execute: run, render,
+build, test, measure, look at the output, fix, and report. Claude's messages reach this chat through the bridge
+(`tools/cursor_bridge/LIVE/cursor_bridge.ps1`) as `tools/cursor_bridge/LIVE/to_cursor/NNN.md`.
+
+- Precedence: the newest message, then `tools/cursor_bridge/LIVE/TO_AGENT.md` (standing items), then any brief the message names.
+- Do exactly the phase the message asks for, then stop. Never start the next phase on your own; Claude reviews first.
+- End every turn with a short report in the format the message asks for. Your final answer is saved for Claude
+  automatically, so put the facts there: numbers, paths, pass/fail, what you changed (old -> new), and what you
+  could not do. Never claim a check you did not run.
+- If you think a message is wrong, say so with measurements. Claude prefers a reasoned push-back to silent
+  compliance.
+- Append one line per step to `tools/cursor_bridge/LIVE/STATUS.md` (time, step, result).
+- A job longer than a few minutes runs detached so the bridge is not held open, with its log in `tools/cursor_bridge/LIVE/logs/<name>.out`:
+  `Invoke-CimMethod Win32_Process -MethodName Create -Arguments @{CommandLine='cmd /c "<command> > <log> 2>&1"'; CurrentDirectory='<dir>'}`
+  Do not use Start-Process with redirects; the child inherits the bridge's pipe. Report the PID and end your turn;
+  Claude will ping you when the log says it is done.
+- A message marked read-only means read and answer only, with no file changes.
+- Never edit `tools/cursor_bridge/LIVE/cursor_bridge.ps1`, `chat_id.txt`, `to_cursor/` or `from_cursor/`.

@@ -37,3 +37,6 @@ hardware/cad/vendor/*.STP
 # Secrets
 .env
 *.env.local
+
+# Claude <-> Cursor bridge traffic (tools/cursor_bridge)
+tools/cursor_bridge/LIVE/

@@ -1,0 +1,7 @@
+---
+description: Auri repo rules for every Cursor agent
+alwaysApply: true
+---
+
+Read `CURSOR.md` at the repo root before doing anything, then `AGENTS.md`. Claude coordinates your work through
+`tools/cursor_bridge/` (see CURSOR.md section 1): do not commit, push or deploy; list every file you change.
