@@ -21,7 +21,8 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-FROM = Path(__file__).resolve().parent / "LIVE" / "from_cursor"
+LIVE_NAME = sys.argv[1] if len(sys.argv) > 1 else "LIVE"  # second bridge: watch_cursor.py LIVE_IMU
+FROM = Path(__file__).resolve().parent / LIVE_NAME / "from_cursor"
 QUIET_AFTER = 8 * 60  # seconds without log growth before a QUIET line
 IGNORE = ("tools/cursor_bridge/LIVE/", ".claude/")
 

@@ -218,3 +218,13 @@ For Codex (owner of `ml/` and `recorder.py`):
 Proposed split until the user says otherwise: **Codex** owns `ml/` and `hub/physiobuddy_hub/recorder.py`;
 **Claude** owns `web/`, the 3D assets and `tools/blender/`. Shared files (`hub/physiobuddy_hub/pipeline.py`,
 `api/server.py`, `core/coach.py`, `__main__.py`): check `git diff` first and commit right after editing.
+
+### 2026-10-29 19:41 · Cursor: clinician dashboard notes from Laxmesh
+Signup, emergency, attention page, static profile. Not committed, not deployed.
+- Smaller logo (sidebar 38→28, sign-in panel 52→36).
+- Sign-in panel line 3 mentions who needs attention; line 5 is an emergency call with the patient. "Secure sign-in by Auth0" removed.
+- Create account goes to Google and then the form. The Auth0 return to `/signup` does not query `clinicians` first. No "No account found" banner.
+- Council is a dropdown (statutory PT councils plus NCAHP state allied councils). Registration number is labelled licence number. "Years of experience" is "Practising since" (a year); stored `years_experience` is still the year-count so the 0–70 check holds.
+- Terms at `/terms`, required on the confirm step.
+- `/attention` for patients who are not on track. Overview "Video calls" is now Emergency (high or rising pain, call the patient, not an ambulance). Patient tab renamed the same way; follow-ups still use `video_calls`.
+- "No plan" is no longer an alert or a filter. Empty plan says "Set exercises". Profile is read-only (copy code stays; regenerate and the edit form are gone).
