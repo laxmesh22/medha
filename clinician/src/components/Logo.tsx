@@ -21,13 +21,13 @@ export function AuriMark({ size = 36, tone = "teal", detail = size >= 24 }: { si
   );
 }
 
-/** Mark + wide-tracked AURI wordmark, optionally with a line under it. */
+/** Mark beside the AURI wordmark. The word is about the height of the tile, as on the brand lockup. */
 export function AuriLockup({ size = 36, tone = "teal", sub }: { size?: number; tone?: "teal" | "light"; sub?: string }) {
   return (
-    <span className="lockup">
+    <span className="lockup" style={{ gap: Math.round(size * 0.28) }}>
       <AuriMark size={size} tone={tone} />
       <span>
-        <span className="wordmark" style={{ fontSize: size * 0.56 }}>AURI</span>
+        <span className="wordmark" style={{ fontSize: Math.round(size * (sub ? 0.58 : 1.02)) }}>AURI</span>
         {sub ? <span className="lockup-sub">{sub}</span> : null}
       </span>
     </span>

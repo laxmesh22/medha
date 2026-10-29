@@ -1,8 +1,10 @@
-import { ActivitySquare, ClipboardList, KeyRound, Mail, ShieldCheck, Video } from "lucide-react";
+import { ActivitySquare, ClipboardList, KeyRound, Mail, PhoneCall, Video } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { AuriLockup } from "../components/Logo";
 import { api } from "../lib/api";
+import { COUNCIL_NAMES, COUNCIL_OTHER, PT_COUNCILS, STATE_COUNCILS } from "../lib/councils";
+import { practisingSince } from "../lib/practice";
 import { useData } from "../lib/store";
 import type { ClinicianInput } from "../lib/types";
 
@@ -20,15 +22,15 @@ export function GoogleMark() {
 export function BrandPanel() {
   return (
     <div className="auth-brand">
-      <AuriLockup size={52} tone="light" sub="Assisted upper-limb rehabilitation intelligence" />
+      <AuriLockup size={52} tone="light" />
       <div>
         <h1>Your patients' shoulder rehab, measured between visits.</h1>
         <div className="auth-points">
           <div><KeyRound size={20} /><span>Patients link to you with your referral code and consent to share their data.</span></div>
           <div><ClipboardList size={20} /><span>You prescribe the exercises, reps and range targets. Nothing changes without you.</span></div>
-          <div><ActivitySquare size={20} /><span>See range of motion from the sensors, adherence, pain and form flags every day.</span></div>
+          <div><ActivitySquare size={20} /><span>See range of motion from the sensors, adherence, pain and who needs attention today.</span></div>
           <div><Video size={20} /><span>Book and hold video consults with each patient.</span></div>
-          <div><ShieldCheck size={20} /><span>Each physiotherapist sees only their own linked patients.</span></div>
+          <div><PhoneCall size={20} /><span>Start an emergency call with a patient when their pain needs you now.</span></div>
         </div>
       </div>
     </div>
@@ -87,7 +89,7 @@ export function SignInButtons({ mode, returnTo, onDone }: { mode: "in" | "up"; r
           </div>
           <button className="btn" disabled={busy !== null}>{busy === "email" ? "Please wait…" : mode === "in" ? "Sign in" : "Create account"}</button>
         </form>
-      ) : (
+      ) : mode === "up" && api.authMode === "auth0" ? null : (
         <button type="button" className="btn ghost" disabled={busy !== null} onClick={() => emailGo()}>
           <Mail size={17} />{busy === "email" ? "Opening…" : mode === "in" ? "Continue with email" : "Sign up with email"}
         </button>
@@ -95,9 +97,10 @@ export function SignInButtons({ mode, returnTo, onDone }: { mode: "in" | "up"; r
       {err ? <div className="error">{err}</div> : null}
       {msg ? <div className="note">{msg}</div> : null}
       <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
-        {api.authMode === "auth0" ? "Secure sign-in by Auth0. " : null}
         {api.authMode === "demo" ? "Demo: no real account is created and nothing leaves this page. " : null}
-        We only use your name and email to set up your clinician account.
+        {mode === "up"
+          ? "Google gives us your name and email. Registration continues on this page."
+          : "We only use your name and email to open your clinician account."}
       </p>
     </div>
   );
@@ -106,8 +109,23 @@ export function SignInButtons({ mode, returnTo, onDone }: { mode: "in" | "up"; r
 export function Login() {
   const { email: signedIn, clinician, reload } = useData();
   const nav = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   if (signedIn && clinician) return <Navigate to="/" replace />;
-  if (signedIn && !clinician) return <Navigate to="/signup" replace state={{ noAccount: true }} />;
+  if (signedIn && !clinician) return <Navigate to="/signup" replace />;
+  const create = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      // Google first: the email comes back on the token, then /signup collects the licence. No clinician lookup on that return.
+      await api.signUp("google", "/signup");
+      await reload();
+      nav("/signup");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  };
   return (
     <div className="auth">
       <BrandPanel />
@@ -122,7 +140,10 @@ export function Login() {
           ) : null}
           <SignInButtons mode="in" returnTo="/" onDone={async () => { await reload(); nav("/"); }} />
           <div className="divider"><span>New to Auri?</span></div>
-          <Link to="/signup" className="btn ghost">Create a doctor account</Link>
+          <button type="button" className="btn ghost" disabled={busy} onClick={() => void create()}>
+            {busy ? "Opening Google…" : "Create a doctor account"}
+          </button>
+          {err ? <div className="error">{err}</div> : null}
         </div>
       </div>
     </div>
@@ -134,6 +155,43 @@ export const SPECIALIZATIONS = ["Musculoskeletal", "Orthopaedic", "Sports", "Neu
 export function emptyClinicianInput(name?: string | null): ClinicianInput {
   return { full_name: name ?? "", title: "", specialization: "Musculoskeletal", clinic: "", city: "", council: "",
     registration_no: "", years_experience: "", phone: "" };
+}
+
+function CouncilField({ value, onChange }: { value: string; onChange: (council: string) => void }) {
+  const listed = (COUNCIL_NAMES as readonly string[]).includes(value);
+  const [pick, setPick] = useState(value === "" ? "" : listed ? value : COUNCIL_OTHER);
+  const choose = (next: string) => {
+    setPick(next);
+    onChange(next === COUNCIL_OTHER ? "" : next);
+  };
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="field">
+        <label htmlFor="co">Registering council</label>
+        <select id="co" className="input" required value={pick} onChange={(e) => choose(e.target.value)}>
+          <option value="" disabled>Select the council on your licence</option>
+          <optgroup label="Physiotherapy councils">
+            {PT_COUNCILS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </optgroup>
+          <optgroup label="State allied and healthcare councils">
+            {STATE_COUNCILS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </optgroup>
+          {!listed && value ? <option value={value}>{value}</option> : null}
+          <option value={COUNCIL_OTHER}>{COUNCIL_OTHER}</option>
+        </select>
+      </div>
+      {pick === COUNCIL_OTHER ? (
+        <div className="field">
+          <label htmlFor="co-other">Council name</label>
+          <input id="co-other" className="input" required value={value} onChange={(e) => onChange(e.target.value)}
+            placeholder="Name of the council that issued your licence" />
+        </div>
+      ) : null}
+      <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>
+        Used when the team verifies your licence. This does not look your number up in a council register.
+      </p>
+    </div>
+  );
 }
 
 /** Professional details, shared by doctor sign-up and the profile page. */
@@ -157,18 +215,16 @@ export function ClinicianFields({ value, onChange }: { value: ClinicianInput; on
         <div className="field"><label htmlFor="ci">City</label>
           <input id="ci" className="input" required value={value.city} onChange={set("city")} autoComplete="address-level2" /></div>
       </div>
+      <CouncilField value={value.council} onChange={(council) => onChange({ ...value, council })} />
       <div className="grid grid-2" style={{ gap: 14 }}>
-        <div className="field"><label htmlFor="co">Registering council</label>
-          <input id="co" className="input" required value={value.council} onChange={set("council")} placeholder="Your state physiotherapy council" /></div>
-        <div className="field"><label htmlFor="rg">Registration number</label>
-          <input id="rg" className="input" required value={value.registration_no} onChange={set("registration_no")} /></div>
+        <div className="field"><label htmlFor="rg">Licence number</label>
+          <input id="rg" className="input" required value={value.registration_no} onChange={set("registration_no")} placeholder="As printed on your council licence" /></div>
+        <div className="field"><label htmlFor="yx">Practising since</label>
+          <input id="yx" className="input num" type="number" inputMode="numeric" min={1956} max={new Date().getFullYear()}
+            value={value.years_experience} onChange={set("years_experience")} placeholder={String(new Date().getFullYear() - 8)} /></div>
       </div>
-      <div className="grid grid-2" style={{ gap: 14 }}>
-        <div className="field"><label htmlFor="yx">Years of experience</label>
-          <input id="yx" className="input num" type="number" min={0} max={70} value={value.years_experience} onChange={set("years_experience")} /></div>
-        <div className="field"><label htmlFor="ph">Phone</label>
-          <input id="ph" className="input" type="tel" required value={value.phone} onChange={set("phone")} autoComplete="tel" placeholder="+91" /></div>
-      </div>
+      <div className="field"><label htmlFor="ph">Phone</label>
+        <input id="ph" className="input" type="tel" required value={value.phone} onChange={set("phone")} autoComplete="tel" placeholder="+91" /></div>
     </div>
   );
 }
@@ -179,7 +235,8 @@ export function ClinicianForm({ submitLabel }: { submitLabel: string }) {
   const [f, setF] = useState<ClinicianInput>(() => clinician ? {
     full_name: clinician.full_name, title: clinician.title ?? "", specialization: clinician.specialization ?? "Musculoskeletal",
     clinic: clinician.clinic ?? "", city: clinician.city ?? "", council: clinician.council ?? "",
-    registration_no: clinician.registration_no ?? "", years_experience: clinician.years_experience?.toString() ?? "",
+    registration_no: clinician.registration_no ?? "",
+    years_experience: clinician.years_experience == null ? "" : practisingSince(clinician.years_experience),
     phone: clinician.phone ?? "",
   } : emptyClinicianInput());
   const [busy, setBusy] = useState(false);

@@ -1,11 +1,13 @@
 import QRCode from "qrcode";
 import { useEffect, useState, type FormEvent } from "react";
-import { AlertCircle, Check, Copy } from "lucide-react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Check, Copy } from "lucide-react";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
+import { yearsForStorage } from "../lib/practice";
 import { useData } from "../lib/store";
 import type { ClinicianInput } from "../lib/types";
 import { BrandPanel, ClinicianFields, emptyClinicianInput, SignInButtons } from "./Auth";
+import { Terms } from "./Terms";
 
 const STEPS = ["Account", "Professional details", "Confirm"];
 
@@ -26,11 +28,10 @@ function Stepper({ step }: { step: number }) {
 export function Signup() {
   const { email, user, clinician, reload, setClinician } = useData();
   const nav = useNavigate();
-  // signed in (Google / email) but no doctor profile yet: sent here from the sign-in page or the dashboard
-  const noAccount = Boolean((useLocation().state as { noAccount?: boolean } | null)?.noAccount);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<ClinicianInput>(() => emptyClinicianInput(user?.name));
-  const [agree, setAgree] = useState({ registered: false, data: false });
+  const [agree, setAgree] = useState({ registered: false, data: false, terms: false });
+  const [showTerms, setShowTerms] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -44,6 +45,7 @@ export function Signup() {
     if (done && clinician) QRCode.toDataURL(clinician.referral_code, { width: 200, margin: 1, color: { dark: "#0a4a4f", light: "#ffffff" } }).then(setQr).catch(() => setQr(null));
   }, [done, clinician]);
 
+  if (showTerms) return <Terms onBack={() => setShowTerms(false)} />;
   if (email && clinician && !done) return <Navigate to="/" replace />;
   const current = !email ? 0 : done ? 3 : step;
 
@@ -56,7 +58,7 @@ export function Signup() {
     setBusy(true);
     setErr(null);
     try {
-      setClinician(await api.saveClinicianProfile(form));
+      setClinician(await api.saveClinicianProfile({ ...form, years_experience: yearsForStorage(form.years_experience) }));
       setDone(true);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -76,7 +78,7 @@ export function Signup() {
             <>
               <div>
                 <h1>Create your doctor account</h1>
-                <p className="ink2" style={{ margin: "6px 0 0" }}>For physiotherapists. Takes about two minutes; you get a referral code for your patients at the end.</p>
+                <p className="ink2" style={{ margin: "6px 0 0" }}>Continue with Google. We use that email here and you finish registration on the next step. We do not look up an existing doctor record first.</p>
               </div>
               {api.authMode === "demo" ? <div className="note">Demo mode: the account is simulated, so you can walk through sign-up safely.</div> : null}
               <SignInButtons mode="up" returnTo="/signup" onDone={reload} />
@@ -86,12 +88,6 @@ export function Signup() {
 
           {current === 1 ? (
             <form className="stack" style={{ gap: 16 }} onSubmit={toConfirm}>
-              {noAccount ? (
-                <div className="alert" role="alert">
-                  <AlertCircle size={18} />
-                  <span><b>No account found</b>{user?.email ? <> for {user.email}</> : null}. Please sign up: fill in your details below to create your doctor account, or use another account.</span>
-                </div>
-              ) : null}
               <div>
                 <h1>Your professional details</h1>
                 <p className="ink2" style={{ margin: "6px 0 0" }}>
@@ -110,14 +106,15 @@ export function Signup() {
             <div className="stack" style={{ gap: 16 }}>
               <div>
                 <h1>Check and confirm</h1>
-                <p className="ink2" style={{ margin: "6px 0 0" }}>We verify your registration number before your profile shows as verified.</p>
+                <p className="ink2" style={{ margin: "6px 0 0" }}>We check your licence number before your profile shows as verified.</p>
               </div>
               <dl className="kv card card-pad" style={{ margin: 0 }}>
                 <dt>Name</dt><dd>{form.full_name}</dd>
                 <dt>Qualification</dt><dd>{form.title} · {form.specialization}</dd>
                 <dt>Clinic</dt><dd>{form.clinic}, {form.city}</dd>
-                <dt>Registration</dt><dd>{form.registration_no} · {form.council}</dd>
-                <dt>Experience</dt><dd>{form.years_experience ? `${form.years_experience} years` : "—"}</dd>
+                <dt>Licence</dt><dd>{form.registration_no}</dd>
+                <dt>Council</dt><dd>{form.council}</dd>
+                <dt>Practising since</dt><dd>{form.years_experience || "—"}</dd>
                 <dt>Phone</dt><dd>{form.phone}</dd>
               </dl>
               <label className="check">
@@ -128,10 +125,14 @@ export function Signup() {
                 <input id="agree-data" type="checkbox" checked={agree.data} onChange={(e) => setAgree({ ...agree, data: e.target.checked })} />
                 <span>I will use patient data only for the care of patients who link to me, and keep it confidential.</span>
               </label>
+              <label className="check">
+                <input id="agree-terms" type="checkbox" checked={agree.terms} onChange={(e) => setAgree({ ...agree, terms: e.target.checked })} />
+                <span>I agree to the <button type="button" className="link" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowTerms(true); }}>Terms and conditions</button>.</span>
+              </label>
               {err ? <div className="error">{err}</div> : null}
               <div className="row between">
                 <button className="btn ghost" onClick={() => setStep(1)}>Back</button>
-                <button className="btn" disabled={busy || !agree.registered || !agree.data} onClick={submit}>{busy ? "Creating…" : "Create my account"}</button>
+                <button className="btn" disabled={busy || !agree.registered || !agree.data || !agree.terms} onClick={submit}>{busy ? "Creating…" : "Create my account"}</button>
               </div>
             </div>
           ) : null}
@@ -151,7 +152,7 @@ export function Signup() {
                   }}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? "Copied" : "Copy code"}</button>
                 </div>
               </div>
-              <div className="warn-note">Registration check pending: you can use the dashboard now; your profile shows as verified once the team confirms your registration number.</div>
+              <div className="warn-note">Licence check pending: you can use the dashboard now. Your profile shows as verified once the team confirms your licence number.</div>
               <button className="btn" onClick={() => { void reload(); nav("/"); }}>Open my dashboard</button>
             </div>
           ) : null}

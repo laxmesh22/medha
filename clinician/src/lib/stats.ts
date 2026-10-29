@@ -102,9 +102,8 @@ export function summarize(patient: Patient, plans: CarePlan[], sessions: Session
   if (maxPain >= 7) alerts.push({ severity: "critical", label: "High pain", detail: `Pain ${maxPain}/10 after a recent session` });
   if (painNow !== null && painPrev !== null && painNow - painPrev >= 1.5)
     alerts.push({ severity: "serious", label: "Pain rising", detail: `Avg pain ${painPrev.toFixed(1)} → ${painNow.toFixed(1)} this week` });
-  if (!plan) alerts.push({ severity: "warning", label: "No plan yet", detail: "Prescribe exercises to start" });
-  else if (daysSinceLast === null) alerts.push({ severity: "warning", label: "Not started", detail: "No sessions logged yet" });
-  else if (daysSinceLast >= 3) alerts.push({ severity: "warning", label: "Missed sessions", detail: `Last session ${daysSinceLast} days ago` });
+  if (plan && daysSinceLast === null) alerts.push({ severity: "warning", label: "Not started", detail: "No sessions logged yet" });
+  if (daysSinceLast !== null && daysSinceLast >= 3) alerts.push({ severity: "warning", label: "Missed sessions", detail: `Last session ${daysSinceLast} days ago` });
   if (formQuality !== null && formQuality < 0.75)
     alerts.push({ severity: "warning", label: "Form issues", detail: `${Math.round((1 - formQuality) * 100)}% of reps rejected this week` });
   const status = alerts.reduce<Severity>((w, a) => (SEVERITY_ORDER[a.severity] > SEVERITY_ORDER[w] ? a.severity : w), "good");

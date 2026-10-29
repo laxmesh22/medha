@@ -1,16 +1,123 @@
-import { Activity, CalendarCheck, HeartPulse, Users, Video } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Activity, CalendarCheck, ChevronDown, HeartPulse, PhoneCall, Users } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { AdherenceChart } from "../components/charts";
 import { TopBar } from "../components/Layout";
 import { Avatar, Empty, StatTile, StatusBadge } from "../components/ui";
-import { JoinCallLink, upcomingCalls, whenLabel } from "../components/VideoConsult";
-import { fmtDateTime, relativeDay } from "../lib/stats";
+import { JoinCallLink } from "../components/VideoConsult";
+import { fmtDateTime, relativeDay, type PatientSummary } from "../lib/stats";
 import { useData } from "../lib/store";
+import type { Session } from "../lib/types";
+
+/** Shown inside the overview dropdown. A longer list opens its own page. */
+const PREVIEW = 3;
+
+function Fold({ title, sub, count, to, children }: {
+  title: string; sub?: string; count: number; to: string; children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const big = count > PREVIEW;
+  return (
+    <div className="card">
+      <button type="button" className="card-head fold" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+        <div>
+          <h2>{title}</h2>
+          {sub ? <p>{sub}</p> : null}
+        </div>
+        <ChevronDown size={18} className="chev" />
+      </button>
+      {open ? (
+        <>
+          <div className="list" style={{ marginTop: 4 }}>{children}</div>
+          {big ? <div className="fold-more"><Link to={to} className="btn ghost small">Open all {count}</Link></div> : null}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+export function SessionRow({ session, name }: { session: Session; name: string }) {
+  const nav = useNavigate();
+  return (
+    <div className="list-row click" onClick={() => nav(`/patients/${session.patient_id}?tab=sessions`)}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 600, fontSize: 14 }}>{name}</div>
+        <div className="muted" style={{ fontSize: 12.5 }}>{fmtDateTime(session.started_at)} · {session.source === "station" ? "Clinic station" : "Home"}</div>
+      </div>
+      <div style={{ marginLeft: "auto", textAlign: "right", fontSize: 13 }}>
+        <div className="num">{session.exercises.reduce((a, e) => a + e.reps_counted, 0)} reps</div>
+        <div className="muted num">pain {session.pain_after ?? "—"}/10</div>
+      </div>
+    </div>
+  );
+}
+
+export function ActivityRow({ summary }: { summary: PatientSummary }) {
+  const nav = useNavigate();
+  return (
+    <div className="list-row click" onClick={() => nav(`/patients/${summary.patient.id}`)}>
+      <Avatar name={summary.patient.full_name} />
+      <div style={{ fontWeight: 560, fontSize: 14 }}>{summary.patient.full_name}</div>
+      <div className="muted" style={{ marginLeft: "auto", fontSize: 13 }}>
+        {summary.lastSession ? relativeDay(summary.lastSession.started_at) : "No sessions"}
+      </div>
+    </div>
+  );
+}
+
+export function RecentSessionsPage() {
+  const { sessions, patients } = useData();
+  const name = (id: string) => patients.find((p) => p.id === id)?.full_name ?? "Patient";
+  return (
+    <>
+      <TopBar />
+      <div className="content">
+        <div className="page-head">
+          <div>
+            <h1>Recent sessions</h1>
+            <p>Across all your patients</p>
+          </div>
+          <Link to="/" className="btn ghost small">Back to overview</Link>
+        </div>
+        <div className="card">
+          <div className="list" style={{ marginTop: 6 }}>
+            {sessions.length === 0 ? <Empty>No sessions yet.</Empty> : null}
+            {sessions.map((s) => <SessionRow key={s.id} session={s} name={name(s.patient_id)} />)}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function LastActivityPage() {
+  const { summaries } = useData();
+  return (
+    <>
+      <TopBar />
+      <div className="content">
+        <div className="page-head">
+          <div>
+            <h1>Last activity</h1>
+            <p>When each patient last did a session</p>
+          </div>
+          <Link to="/" className="btn ghost small">Back to overview</Link>
+        </div>
+        <div className="card">
+          <div className="list" style={{ marginTop: 6 }}>
+            {summaries.length === 0 ? <Empty>No patients yet.</Empty> : null}
+            {summaries.map((s) => <ActivityRow key={s.patient.id} summary={s} />)}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 export function Overview() {
-  const { clinician, summaries, sessions, patients, calls } = useData();
-  const upcoming = upcomingCalls(calls).slice(0, 4);
+  const { clinician, summaries, sessions, patients } = useData();
   const nav = useNavigate();
+  const emergency = summaries.filter((s) => s.alerts.some((a) => a.severity === "critical" || a.severity === "serious"));
   const now = Date.now();
   const week = sessions.filter((s) => now - Date.parse(s.started_at) < 7 * 86_400_000);
   const withPlan = summaries.filter((s) => s.adherence7 !== null);
@@ -33,13 +140,13 @@ export function Overview() {
 
         <div className="grid grid-4" style={{ marginBottom: 18 }}>
           <StatTile icon={<Users size={16} />} label="Active patients" value={summaries.length}
-            sub={`${summaries.filter((s) => !s.plan).length} waiting for a plan`} />
+            sub="Linked with your referral code" />
           <StatTile icon={<CalendarCheck size={16} />} label="Sessions, last 7 days" value={week.length}
             sub={`${week.filter((s) => s.source === "station").length} at the clinic station`} />
           <StatTile icon={<Activity size={16} />} label="Average adherence, 7 days" value={avgAdh === null ? "—" : `${Math.round(avgAdh * 100)}%`}
             sub="Sessions done vs prescribed" />
           <StatTile icon={<HeartPulse size={16} />} label="Need attention" value={attention.length}
-            sub={`${attention.filter((s) => s.status === "critical" || s.status === "serious").length} with pain alerts`} />
+            sub="Open the list" onClick={() => nav("/attention")} />
         </div>
 
         <div className="grid split">
@@ -48,8 +155,9 @@ export function Overview() {
               <div className="card-head">
                 <div>
                   <h2>Needs attention</h2>
-                  <p>Pain alerts first, then missed sessions, form issues and patients without a plan.</p>
+                  <p>Pain alerts first, then missed sessions and form issues.</p>
                 </div>
+                <Link to="/attention" className="btn ghost small">Open</Link>
               </div>
               <div className="list" style={{ marginTop: 10 }}>
                 {attention.length === 0 ? <Empty>Nothing to review. Every patient is on track.</Empty> : null}
@@ -82,69 +190,32 @@ export function Overview() {
             <div className="card">
               <div className="card-head">
                 <div>
-                  <h2>Video calls</h2>
-                  <p>Booked consults, soonest first</p>
+                  <h2>Emergency</h2>
+                  <p>High or rising pain. The call reaches the patient, not an ambulance.</p>
                 </div>
-                <Video size={18} className="muted" />
+                <PhoneCall size={18} className="muted" />
               </div>
               <div className="list" style={{ marginTop: 10 }}>
-                {upcoming.length === 0 ? <Empty>No calls booked.</Empty> : null}
-                {upcoming.map((c) => {
-                  const p = patients.find((x) => x.id === c.patient_id);
-                  if (!p) return null;
-                  const soon = Math.abs(Date.parse(c.scheduled_for!) - Date.now()) < 30 * 60_000;
-                  return (
-                    <div key={c.id} className="list-row">
-                      <div style={{ minWidth: 0, cursor: "pointer" }} onClick={() => nav(`/patients/${p.id}?tab=video`)}>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>{p.full_name}</div>
-                        <div className="muted" style={{ fontSize: 12.5 }}>{whenLabel(c.scheduled_for!)} · {c.duration_min} min</div>
-                      </div>
-                      <div style={{ marginLeft: "auto" }}>
-                        {soon ? <JoinCallLink patient={p} call={c} label="Join" small />
-                          : <button className="btn ghost small" onClick={() => nav(`/patients/${p.id}?tab=video`)}>Open</button>}
-                      </div>
+                {emergency.length === 0 ? <Empty>No emergency calls. Patients with high or rising pain show up here.</Empty> : null}
+                {emergency.map((s) => (
+                  <div key={s.patient.id} className="list-row">
+                    <div style={{ minWidth: 0, cursor: "pointer" }} onClick={() => nav(`/patients/${s.patient.id}?tab=video`)}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{s.patient.full_name}</div>
+                      <div className="muted" style={{ fontSize: 12.5 }}>{s.alerts.filter((a) => a.severity === "critical" || a.severity === "serious").map((a) => a.detail).join(" · ")}</div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-head">
-                <div>
-                  <h2>Recent sessions</h2>
-                  <p>Across all your patients</p>
-                </div>
-              </div>
-              <div className="list" style={{ marginTop: 10 }}>
-                {sessions.slice(0, 7).map((s) => (
-                  <div key={s.id} className="list-row click" onClick={() => nav(`/patients/${s.patient_id}?tab=sessions`)}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14 }}>{name(s.patient_id)}</div>
-                      <div className="muted" style={{ fontSize: 12.5 }}>{fmtDateTime(s.started_at)} · {s.source === "station" ? "Clinic station" : "Home"}</div>
-                    </div>
-                    <div style={{ marginLeft: "auto", textAlign: "right", fontSize: 13 }}>
-                      <div className="num">{s.exercises.reduce((a, e) => a + e.reps_counted, 0)} reps</div>
-                      <div className="muted num">pain {s.pain_after ?? "—"}/10</div>
-                    </div>
-                  </div>
-                ))}
-                {sessions.length === 0 ? <Empty>No sessions yet.</Empty> : null}
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-head"><h2>Last activity</h2></div>
-              <div className="list" style={{ marginTop: 10 }}>
-                {summaries.map((s) => (
-                  <div key={s.patient.id} className="list-row click" onClick={() => nav(`/patients/${s.patient.id}`)}>
-                    <Avatar name={s.patient.full_name} />
-                    <div style={{ fontWeight: 560, fontSize: 14 }}>{s.patient.full_name}</div>
-                    <div className="muted" style={{ marginLeft: "auto", fontSize: 13 }}>
-                      {s.lastSession ? relativeDay(s.lastSession.started_at) : "No sessions"}
+                    <div style={{ marginLeft: "auto" }}>
+                      <JoinCallLink patient={s.patient} label="Call now" small />
                     </div>
                   </div>
                 ))}
               </div>
             </div>
+            <Fold title="Recent sessions" sub="Across all your patients" count={sessions.length} to="/sessions">
+              {sessions.length === 0 ? <Empty>No sessions yet.</Empty> : sessions.slice(0, PREVIEW).map((s) => <SessionRow key={s.id} session={s} name={name(s.patient_id)} />)}
+            </Fold>
+            <Fold title="Last activity" count={summaries.length} to="/activity">
+              {summaries.slice(0, PREVIEW).map((s) => <ActivityRow key={s.patient.id} summary={s} />)}
+            </Fold>
           </div>
         </div>
       </div>

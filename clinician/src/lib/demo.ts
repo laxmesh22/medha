@@ -2,6 +2,7 @@
 // All people are fictional. Sessions are generated deterministically relative to "now"; plan edits and the
 // referral code persist in this browser (localStorage) so a demo can show prescribing.
 
+import { yearsForStorage } from "./practice";
 import type { Api, CarePlan, Clinician, ClinicianInput, Exercise, Patient, PlanItem, Session, SessionExercise, VideoCall } from "./types";
 
 export const EXERCISES: Exercise[] = [
@@ -278,8 +279,9 @@ export function demoApi(): Api {
       return signedIn && !newDoctor ? store.clinician : null;
     },
     async saveClinicianProfile(input: ClinicianInput) {
-      const years = input.years_experience.trim() === "" ? null : Number(input.years_experience);
-      const fields = { ...input, years_experience: Number.isFinite(years) ? years : null };
+      const stored = yearsForStorage(input.years_experience);
+      const years = stored === "" ? null : Number(stored);
+      const fields = { ...input, years_experience: years };
       if (newDoctor) {
         // a new sign-up in the demo: fresh profile and code, still shown with the demo patients
         store = { ...store, clinician: { ...store.clinician, ...fields, id: "c-new", email: "new.doctor@demo.auri",

@@ -29,7 +29,7 @@ export function whenLabel(iso: string, now = Date.now()): string {
 }
 
 /** Opens the patient's room in a new tab and logs the call as started. */
-export function JoinCallLink({ patient, call, label = "Start video call", small }: {
+export function JoinCallLink({ patient, call, label = "Start emergency call", small }: {
   patient: Patient; call?: VideoCall; label?: string; small?: boolean;
 }) {
   const { clinician, reload } = useData();
@@ -102,9 +102,9 @@ export function VideoConsult({ patient }: { patient: Patient }) {
         <div className="card card-pad">
           <div className="row between wrap">
             <div>
-              <h2>Video consult with {first}</h2>
-              <p className="ink2" style={{ margin: "4px 0 0" }}>The call opens in a new tab on {VIDEO_PROVIDER}. {first} joins from the
-                Auri app or the link below; both of you get a camera and microphone check first.</p>
+              <h2>Emergency call with {first}</h2>
+              <p className="ink2" style={{ margin: "4px 0 0" }}>Opens a video room with {first} in a new tab on {VIDEO_PROVIDER}.
+                This reaches the patient. It does not contact an ambulance or a hospital emergency department.</p>
             </div>
           </div>
           <div className="row wrap" style={{ marginTop: 16 }}>
@@ -118,9 +118,9 @@ export function VideoConsult({ patient }: { patient: Patient }) {
         </div>
 
         <div className="card">
-          <div className="card-head"><div><h2>Upcoming</h2><p>{first} sees these in the app with a join button.</p></div></div>
+          <div className="card-head"><div><h2>Follow-ups</h2><p>{first} sees these in the app with a join button.</p></div></div>
           <div className="list" style={{ marginTop: 10 }}>
-            {upcoming.length === 0 ? <Empty>No calls booked.</Empty> : null}
+            {upcoming.length === 0 ? <Empty>No follow-ups booked.</Empty> : null}
             {upcoming.map((c) => (
               <div key={c.id} className="list-row wrap">
                 <div style={{ minWidth: 0 }}>
@@ -166,7 +166,7 @@ export function VideoConsult({ patient }: { patient: Patient }) {
       </div>
 
       <form className="card card-pad stack" style={{ gap: 14 }} onSubmit={schedule}>
-        <div className="row"><CalendarPlus size={18} className="muted" /><h2>Book a call</h2></div>
+        <div className="row"><CalendarPlus size={18} className="muted" /><h2>Schedule a follow-up</h2></div>
         <div className="field">
           <label htmlFor="call-when">Date and time</label>
           <input id="call-when" className="input" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} required />
@@ -183,7 +183,7 @@ export function VideoConsult({ patient }: { patient: Patient }) {
             placeholder="e.g. Check technique on the side raise" />
         </div>
         {err ? <div className="error">{err}</div> : null}
-        <button className="btn" disabled={busy}>{busy ? "Booking…" : "Book call"}</button>
+        <button className="btn" disabled={busy}>{busy ? "Saving…" : "Schedule follow-up"}</button>
       </form>
     </div>
   );

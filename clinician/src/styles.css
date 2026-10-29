@@ -62,10 +62,9 @@ h3 { font-size: 15px; font-weight: 600; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 22px; }
 .brand-mark { display: inline-flex; }
 .lockup { display: inline-flex; align-items: center; gap: 12px; }
-.lockup > span { display: flex; flex-direction: column; }
-.wordmark { font-family: Jost, "Futura", "Century Gothic", system-ui, sans-serif; font-weight: 500; letter-spacing: 0.16em; line-height: 1; }
+.lockup > span { display: flex; flex-direction: column; align-items: flex-start; }
+.wordmark { font-family: Jost, "Futura", "Century Gothic", system-ui, sans-serif; font-weight: 500; letter-spacing: 0.01em; line-height: 0.8; }
 .lockup-sub { font-size: 12px; opacity: 0.72; margin-top: 4px; }
-.auth-brand .lockup-sub { font-size: 12.5px; letter-spacing: 0.14em; text-transform: uppercase; max-width: 260px; line-height: 1.5; }
 .brand-name { font-weight: 700; font-size: 16px; line-height: 1.1; }
 .brand-sub { font-size: 12px; opacity: 0.72; }
 .nav a {
@@ -102,6 +101,14 @@ h3 { font-size: 15px; font-weight: 600; }
 .card-pad { padding: 20px 22px; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 22px 0; }
 .card-head p { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); }
+button.card-head.fold {
+  width: 100%; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  padding: 16px 22px; border-radius: var(--radius);
+}
+button.card-head.fold:hover { background: var(--teal-wash); }
+button.card-head.fold .chev { color: var(--ink-3); transition: transform 0.15s; flex: 0 0 auto; }
+button.card-head.fold[aria-expanded="true"] .chev { transform: rotate(180deg); }
+.fold-more { display: flex; justify-content: flex-end; padding: 4px 18px 14px; }
 .grid { display: grid; gap: 18px; }
 .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -151,6 +158,9 @@ h3 { font-size: 15px; font-weight: 600; }
 
 /* ---------------------------------------------------------------- stat tiles */
 .stat { padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; }
+.stat.click { cursor: pointer; }
+.stat.click:hover { background: var(--teal-wash); }
+button.link { background: none; border: 0; padding: 0; color: var(--teal); font: inherit; font-weight: 650; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .stat .label { font-size: 13px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
 .stat .value { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.1; }
 .stat .sub { font-size: 13px; color: var(--ink-3); }
@@ -245,11 +255,11 @@ h3 { font-size: 15px; font-weight: 600; }
   .shell { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .mobile-nav {
-    display: flex; align-items: center; gap: 4px; overflow-x: auto; background: var(--teal); color: var(--on-teal);
-    padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    display: flex; align-items: center; gap: 2px; overflow-x: auto; background: var(--teal); color: var(--on-teal);
+    padding-block: 10px; padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px));
   }
-  .mobile-nav .brand-mark { width: 28px; height: 28px; border-radius: 8px; margin-right: 6px; flex: 0 0 auto; }
-  .mobile-nav a { padding: 7px 11px; border-radius: 9px; color: rgba(245, 242, 234, 0.82); font-weight: 560; white-space: nowrap; }
+  .mobile-nav .brand-mark { width: 24px; height: 24px; border-radius: 8px; margin-right: 2px; flex: 0 0 auto; }
+  .mobile-nav a { padding: 7px 6px; border-radius: 9px; color: rgba(245, 242, 234, 0.82); font-weight: 560; white-space: nowrap; }
   .mobile-nav a.active { background: rgba(245, 242, 234, 0.16); color: var(--on-teal); }
   .topbar, .content { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
   .topbar { position: static; flex-wrap: wrap; }

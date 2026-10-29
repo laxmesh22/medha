@@ -1,4 +1,4 @@
-import { ArrowLeft, ClipboardList, History, Plus, Stethoscope, Trash2, TrendingUp, Table2, Video } from "lucide-react";
+import { ArrowLeft, ClipboardList, History, PhoneCall, Plus, Stethoscope, Trash2, TrendingUp, Table2 } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { AdherenceChart, PainChart, RomChart } from "../components/charts";
@@ -16,7 +16,7 @@ const TABS = [
   { id: "plan", label: "Care plan", icon: ClipboardList },
   { id: "sessions", label: "Sessions", icon: Table2 },
   { id: "medical", label: "Medical info", icon: Stethoscope },
-  { id: "video", label: "Video calls", icon: Video },
+  { id: "video", label: "Emergency", icon: PhoneCall },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -59,9 +59,9 @@ export function PatientDetail() {
               </div>
               <div className="row wrap" style={{ justifyContent: "flex-end" }}>
                 {next ? <button className="chip" style={{ border: 0, cursor: "pointer" }} onClick={() => setParams({ tab: "video" })}>
-                  <Video size={13} />Next call: {whenLabel(next.scheduled_for!)}</button> : null}
+                  <PhoneCall size={13} />Follow-up: {whenLabel(next.scheduled_for!)}</button> : null}
                 <JoinCallLink patient={p} call={next && Math.abs(Date.parse(next.scheduled_for!) - Date.now()) < 1_800_000 ? next : undefined}
-                  label="Video call" small />
+                  label="Emergency call" small />
               </div>
             </div>
           </div>
@@ -96,8 +96,9 @@ function Progress({ s, onPlan }: { s: PatientSummary; onPlan: () => void }) {
   if (!s.plan) {
     return (
       <div className="card card-pad">
-        <h2>No care plan yet</h2>
-        <p className="ink2">Progress appears once you prescribe exercises and the patient completes sessions.</p>
+        <h2>Set the first exercises</h2>
+        <p className="ink2">Publish a plan and the patient's sessions, range and pain show up here.</p>
+        {s.lastSession ? <p className="ink2">Last session {relativeDay(s.lastSession.started_at)}.</p> : null}
         <button className="btn" onClick={onPlan}><Plus size={16} />Prescribe exercises</button>
       </div>
     );

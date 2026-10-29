@@ -1,4 +1,4 @@
-import { BookOpen, LayoutDashboard, LogOut, UserRound, Users } from "lucide-react";
+import { BookOpen, HeartPulse, LayoutDashboard, LogOut, UserRound, Users } from "lucide-react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { AuriLockup, AuriMark } from "./Logo";
 import { api } from "../lib/api";
@@ -14,10 +14,11 @@ export function Layout() {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <AuriLockup size={38} tone="light" sub="Clinician dashboard" />
+          <AuriLockup size={52} tone="light" />
         </div>
         <nav className="nav">
-          <NavLink to="/" end><LayoutDashboard size={18} />Overview{attention ? <span className="count">{attention}</span> : null}</NavLink>
+          <NavLink to="/" end><LayoutDashboard size={18} />Overview</NavLink>
+          <NavLink to="/attention"><HeartPulse size={18} />Needs attention{attention ? <span className="count">{attention}</span> : null}</NavLink>
           <NavLink to="/patients"><Users size={18} />Patients<span className="count">{summaries.length}</span></NavLink>
           <NavLink to="/library"><BookOpen size={18} />Exercise library</NavLink>
           <NavLink to="/profile"><UserRound size={18} />Profile & code</NavLink>
@@ -42,8 +43,9 @@ export function Layout() {
       </aside>
       <main className="main">
         <nav className="mobile-nav" aria-label="Sections">
-          <span className="brand-mark"><AuriMark size={30} tone="light" /></span>
+          <span className="brand-mark"><AuriMark size={24} tone="light" /></span>
           <NavLink to="/" end>Overview</NavLink>
+          <NavLink to="/attention">Attention</NavLink>
           <NavLink to="/patients">Patients</NavLink>
           <NavLink to="/library">Library</NavLink>
           <NavLink to="/profile">Code</NavLink>

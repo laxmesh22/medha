@@ -6,10 +6,10 @@ import { Avatar, Empty, Meter, StatusBadge } from "../components/ui";
 import { deg, relativeDay, type Severity } from "../lib/stats";
 import { useData } from "../lib/store";
 
-const FILTERS: { id: "all" | "attention" | "noplan"; label: string }[] = [
+const FILTERS: { id: "all" | "attention" | "pain"; label: string }[] = [
   { id: "all", label: "All" },
   { id: "attention", label: "Needs attention" },
-  { id: "noplan", label: "No plan" },
+  { id: "pain", label: "Pain alerts" },
 ];
 
 const SIDE = { left: "Left", right: "Right", both: "Both" } as const;
@@ -24,7 +24,7 @@ export function Patients() {
   const rows = useMemo(() => summaries.filter((s) => {
     if (q && !s.patient.full_name.toLowerCase().includes(q.toLowerCase())) return false;
     if (filter === "attention") return s.status !== "good";
-    if (filter === "noplan") return !s.plan;
+    if (filter === "pain") return s.alerts.some((a) => a.severity === "critical" || a.severity === "serious");
     return true;
   }), [summaries, q, filter]);
 
@@ -79,7 +79,7 @@ export function Patients() {
                       </div>
                     </td>
                     <td>{s.patient.affected_side ? SIDE[s.patient.affected_side] : "—"}</td>
-                    <td>{s.plan ? <span>v{s.plan.version} · {s.plan.items.length} exercises</span> : <span className="muted">None yet</span>}</td>
+                    <td>{s.plan ? <span>v{s.plan.version} · {s.plan.items.length} exercises</span> : <span style={{ color: "var(--teal)", fontWeight: 600 }}>Set exercises</span>}</td>
                     <td><Meter value={s.adherence7} /></td>
                     <td>{s.lastSession ? relativeDay(s.lastSession.started_at) : <span className="muted">—</span>}</td>
                     <td className="num">

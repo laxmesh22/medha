@@ -4,6 +4,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { auth0, GOOGLE_CONNECTION, handleAuth0Redirect, idToken } from "./auth0";
+import { yearsForStorage } from "./practice";
 import type { Api, AuthUser, CarePlan, Clinician, Patient, PlanItem, Session, VideoCall } from "./types";
 
 const DAY = 86_400_000;
@@ -125,7 +126,9 @@ export function supabaseApi(url: string, anonKey: string, useAuth0: boolean): Ap
       return row;
     },
     async saveClinicianProfile(input) {
-      const row = must(await sb.rpc("create_clinician_profile", { p: input })) as Clinician;
+      const row = must(await sb.rpc("create_clinician_profile", {
+        p: { ...input, years_experience: yearsForStorage(input.years_experience) },
+      })) as Clinician;
       clinicianId = row.id;
       return row;
     },

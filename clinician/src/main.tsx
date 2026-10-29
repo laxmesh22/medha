@@ -6,8 +6,10 @@ import { Layout } from "./components/Layout";
 import { api } from "./lib/api";
 import { DataProvider, useData } from "./lib/store";
 import { Login } from "./pages/Auth";
+import { Attention } from "./pages/Attention";
 import { Signup } from "./pages/Signup";
-import { Overview } from "./pages/Overview";
+import { Terms } from "./pages/Terms";
+import { LastActivityPage, Overview, RecentSessionsPage } from "./pages/Overview";
 import { PatientDetail } from "./pages/PatientDetail";
 import { Patients } from "./pages/Patients";
 import { Library, Profile } from "./pages/Profile";
@@ -23,8 +25,9 @@ function explain(error: string): string {
 }
 
 function Guard() {
-  const { loading, email, clinician, error, reload } = useData();
-  if (loading) return <div className="empty" style={{ paddingTop: 120 }}>Loading…</div>;
+  const { loading, email, clinician, error, reload, redirectTo } = useData();
+  // Google sign-up lands on "/" with the auth code, then moves to /signup. Don't treat a missing row as a failed lookup.
+  if (loading || redirectTo === "/signup") return <div className="empty" style={{ paddingTop: 120 }}>Loading…</div>;
   if (error) {
     return (
       <div className="auth-form" style={{ minHeight: "100vh" }}>
@@ -41,7 +44,7 @@ function Guard() {
     );
   }
   if (!email) return <Navigate to="/login" replace />;
-  if (!clinician) return <Navigate to="/signup" replace state={{ noAccount: true }} />;
+  if (!clinician) return <Navigate to="/signup" replace />;
   return <Layout />;
 }
 
@@ -69,9 +72,13 @@ createRoot(document.getElementById("root")!).render(
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/terms" element={<Terms />} />
           <Route path="/onboarding" element={<Navigate to="/signup" replace />} />
           <Route element={<Guard />}>
             <Route index element={<Overview />} />
+            <Route path="attention" element={<Attention />} />
+            <Route path="sessions" element={<RecentSessionsPage />} />
+            <Route path="activity" element={<LastActivityPage />} />
             <Route path="patients" element={<Patients />} />
             <Route path="patients/:id" element={<PatientDetail />} />
             <Route path="library" element={<Library />} />

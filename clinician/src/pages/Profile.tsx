@@ -1,20 +1,18 @@
-import { Check, Copy, RefreshCw } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { TopBar } from "../components/Layout";
 import { Empty, StatusBadge } from "../components/ui";
 import { api } from "../lib/api";
 import { resetDemo } from "../lib/demo";
+import { practisingSince } from "../lib/practice";
 import { stationMeasured, stationMeasureLabel } from "../lib/station";
 import { useData } from "../lib/store";
-import { ClinicianForm } from "./Auth";
 
 export function Profile() {
-  const { clinician, setClinician } = useData();
+  const { clinician } = useData();
   const [qr, setQr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [confirm, setConfirm] = useState(false);
-  const [busy, setBusy] = useState(false);
   const code = clinician?.referral_code ?? "";
 
   useEffect(() => {
@@ -57,38 +55,25 @@ export function Profile() {
                 </div>
               </div>
             </div>
-            <div style={{ marginTop: 22 }}>
-              {!confirm ? (
-                <button className="btn danger small" onClick={() => setConfirm(true)}><RefreshCw size={14} />Make a new code</button>
-              ) : (
-                <div className="warn-note">
-                  The old code stops working for new patients. Patients already linked stay linked.
-                  <div className="row" style={{ marginTop: 10 }}>
-                    <button className="btn small" disabled={busy} onClick={async () => {
-                      setBusy(true);
-                      try {
-                        const c = await api.regenerateReferralCode();
-                        setClinician({ ...clinician, referral_code: c });
-                      } finally {
-                        setBusy(false);
-                        setConfirm(false);
-                      }
-                    }}>Yes, make a new code</button>
-                    <button className="btn ghost small" onClick={() => setConfirm(false)}>Cancel</button>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
           <div className="card card-pad">
             <div className="row between" style={{ marginBottom: 14 }}>
               <h2>Profile</h2>
-              {clinician.verification_status === "verified" ? <StatusBadge severity="good" label="Registration verified" />
-                : clinician.verification_status === "rejected" ? <StatusBadge severity="critical" label="Registration not verified" />
+              {clinician.verification_status === "verified" ? <StatusBadge severity="good" label="Licence verified" />
+                : clinician.verification_status === "rejected" ? <StatusBadge severity="critical" label="Licence not verified" />
                 : <StatusBadge severity="warning" label="Verification pending" />}
             </div>
-            {clinician.email ? <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>Signed in as {clinician.email}</div> : null}
-            <ClinicianForm submitLabel="Save profile" />
+            <dl className="kv">
+              <dt>Name</dt><dd>{clinician.full_name}</dd>
+              <dt>Qualification</dt><dd>{[clinician.title, clinician.specialization].filter(Boolean).join(" · ") || "—"}</dd>
+              <dt>Clinic</dt><dd>{[clinician.clinic, clinician.city].filter(Boolean).join(", ") || "—"}</dd>
+              <dt>Licence number</dt><dd>{clinician.registration_no || "—"}</dd>
+              <dt>Council</dt><dd>{clinician.council || "—"}</dd>
+              <dt>Practising since</dt><dd>{practisingSince(clinician.years_experience)}</dd>
+              <dt>Phone</dt><dd>{clinician.phone || "—"}</dd>
+              <dt>Email</dt><dd>{clinician.email || "—"}</dd>
+            </dl>
+            <p className="muted" style={{ fontSize: 13, margin: "14px 0 0" }}>Taken at sign-up. Ask the Auri team if a licence or clinic name needs correcting.</p>
             {api.mode === "demo" ? (
               <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>Demo mode: plans you publish are kept in this browser.</div>

@@ -2,7 +2,8 @@
 
 The physiotherapist side of Auri: onboarding with a referral code, the patients who linked with that code,
 care-plan prescribing (versioned), and daily progress (range of motion from the sensors, adherence, pain, form flags).
-Video consults included; text messaging is not part of this release.
+Emergency calls (a video room with that patient) are included; text messaging is not part of this release.
+An emergency call does not contact an ambulance or a hospital emergency department.
 
 ```bash
 cd clinician
@@ -14,9 +15,10 @@ Without Supabase keys it runs on **demo data** (six fictional patients covering 
 nearly full range, rising pain + form issues, missed sessions, new patient without a plan). Plans published in demo mode
 are kept in the browser; **Profile → Reset demo data** clears them.
 
-## Video consults
-Each patient–clinician link has its own unguessable room (`care_links.video_room`). The clinician starts or books a
-call from the patient's **Video calls** tab (or the Overview); the patient app shows booked calls from `video_calls`
+## Emergency calls
+Each patient–clinician link has its own unguessable room (`care_links.video_room`). The clinician starts a call from
+the patient's **Emergency** tab, or from the Overview when pain is high or rising. Follow-ups are still stored in
+`video_calls`. The patient app shows booked calls from `video_calls`
 and opens the same room. Calls run on **Jitsi Meet** in a new tab: no account for the patient, any phone or laptop,
 camera and microphone check before joining. The physio may be asked to sign in once on meet.jit.si to open a room.
 
@@ -26,19 +28,21 @@ camera and microphone check before joining. The physio may be asked to sign in o
 
 ## Share a preview
 `npm run artifact` builds `dist-artifact/physio-buddy-clinician.html`: one self-contained page on demo data
-(in-memory routing, no backend access), published as a claude.ai Artifact for the team. Video calls work from it
+(in-memory routing, no backend access), published as a claude.ai Artifact for the team. Emergency calls work from it
 (they open in a new tab); real patient data needs the deployed app with Supabase.
 
 ## Sign-in and doctor sign-up
 - **Sign in** (`/login`): *Continue with Google* or *Continue with email*.
 - **New doctor sign-up** (`/signup`), three steps:
-  1. Account: Google or email.
-  2. Professional details: name, qualification, specialisation, clinic, city, registering council, registration
-     number, experience, phone.
-  3. Confirm two declarations.
+  1. Account: Continue with Google. The name and email come from Google. Returning from Google does not look up a
+     clinician row first; the form is next. Auth0's database sign-up screen is not used for this path.
+  2. Professional details: name, qualification, specialisation, clinic, city, registering council (dropdown),
+     licence number (stored as `registration_no`), practising-since year, phone. The year is converted to
+     `years_experience` (0–70) before save, because that column is a year-count.
+  3. Confirm, including the terms (`/terms`).
 
   The doctor then gets their referral code and QR. `verification_status` starts as `pending` until the team checks
-  the registration number.
+  the licence number. The profile page shows these details and does not edit them.
 - Sign-in runs on **Auth0** when `VITE_AUTH0_DOMAIN` and `VITE_AUTH0_CLIENT_ID` are set. Without them it uses
   Supabase's own auth (email + password, Google). The demo build simulates both.
 
@@ -77,7 +81,7 @@ linked to them, and a patient only their own rows.
 | Link | `rpc('link_patient_with_code', { p_code })` after the patient agrees to share | patient in the list, `consent_at` |
 | Plan | read `care_plans` (`status = 'active'`) + `plan_items` | the clinician writes them via `publish_care_plan` |
 | Session | insert `sessions` + `session_exercises` after each session | progress charts, adherence, alerts |
-| Video call | read `care_links.video_room` + `video_calls` (status `scheduled`); open `https://meet.jit.si/<video_room>` | books calls, starts them, sees past calls |
+| Emergency call | read `care_links.video_room` + `video_calls` (status `scheduled`); open `https://meet.jit.si/<video_room>` | starts a call, schedules a follow-up, sees past calls |
 
 Session fields the dashboard relies on:
 
@@ -95,8 +99,9 @@ coach and PB-MotionNet use.
 ## Rules the dashboard keeps
 - Exercise targets and progression are the clinician's: every plan change is a new version; nothing auto-increases.
 - Degrees are shown only as measured by the device; missing data shows as "—".
-- Alerts: pain ≥ 7 after a recent session (critical), average pain up ≥ 1.5 week-over-week (serious), no session for
-  3+ calendar days, more than 25 % of reps rejected, or no plan yet (warning). Thresholds are in `src/lib/stats.ts`
+- Alerts: pain ≥ 7 after a recent session (critical), average pain up ≥ 1.5 week-over-week (serious), a plan with no
+  session yet, no session for 3+ calendar days, or more than 25 % of reps rejected (warning). A patient with no plan
+  is not an alert. Thresholds are in `src/lib/stats.ts`
   and are provisional until the clinicians on the team confirm them.
 
 ## Design

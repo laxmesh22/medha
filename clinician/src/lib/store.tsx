@@ -42,6 +42,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setState((s) => ({ ...s, loading: false, error: null, email: null, user: null, clinician: null, redirectTo }));
         return;
       }
+      // Create-account returns from Google straight into the form. Do not look up a clinician row first.
+      if (redirectTo === "/signup") {
+        setState((s) => ({ ...s, loading: false, error: null, email, user, clinician: null, redirectTo }));
+        return;
+      }
       const clinician = await api.getMyClinician();
       if (!clinician) {
         setState((s) => ({ ...s, loading: false, error: null, email, user, clinician: null, redirectTo: redirectTo ?? s.redirectTo }));

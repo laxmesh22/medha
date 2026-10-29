@@ -20,9 +20,12 @@ export function Avatar({ name, size }: { name: string; size?: "lg" }) {
   return <span className={`avatar ${size ?? ""}`}>{initials(name)}</span>;
 }
 
-export function StatTile({ label, value, sub, icon }: { label: string; value: ReactNode; sub?: ReactNode; icon?: ReactNode }) {
+export function StatTile({ label, value, sub, icon, onClick }: {
+  label: string; value: ReactNode; sub?: ReactNode; icon?: ReactNode; onClick?: () => void;
+}) {
   return (
-    <div className="card stat">
+    <div className={`card stat${onClick ? " click" : ""}`} onClick={onClick} role={onClick ? "link" : undefined}
+      tabIndex={onClick ? 0 : undefined} onKeyDown={onClick ? (e) => { if (e.key === "Enter") onClick(); } : undefined}>
       <div className="label">
         {icon}
         {label}
