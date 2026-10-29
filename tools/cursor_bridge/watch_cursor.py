@@ -67,7 +67,7 @@ def main() -> None:
     FROM.mkdir(parents=True, exist_ok=True)
     offsets: dict[Path, int] = {p: p.stat().st_size for p in FROM.glob("*.jsonl")}  # only new activity
     answered = {p.stem for p in FROM.glob("*.md")}
-    grew: dict[str, float] = {}
+    grew: dict[str, float] = {p.stem: p.stat().st_mtime for p in FROM.glob("*.jsonl")}  # last real activity
     quiet_said: set[str] = set()
     tree = git_dirty()
     say(f"WATCH up: {len(answered)} answers so far, {len(tree)} changed paths in the tree")

@@ -49,6 +49,137 @@ $('#credit').textContent = ATTRIBUTION;
 renderReps($('#rep-strip'), null);
 
 const ui = { side: 'right', mirror: true, view: 'avatar', state: null, explain: null, exercises: {}, userPaused: false, lastRep: 0, repFlashUntil: 0 };
+
+// Same default as plan_items.pain_stop (clinician/supabase/schema.sql:101).
+const PAIN_STOP = 6;
+const PAIN_STOP_LINE = 'Please stop and rest. Tell your physiotherapist about this pain.';
+const REJECT_CODES = new Set(['REP_REJECTED', 'REP_LOW_QUALITY', 'REP_NN_UNKNOWN', 'REP_NN_PHASE']);
+
+// Page-session tallies. The hub resets reps when the exercise changes and only keeps the last 10,
+// so this page copies what /ws/live already sends. Nothing is uploaded.
+const session = {
+  checkins: [],
+  exercises: new Map(),
+  lastEx: null,
+  lastRepN: 0,
+  prevEvents: [],
+  primed: false,
+};
+let awaitingCheckin = true;
+
+function eventKeys(events) {
+  return (events || []).map((e) => `${e.code}|${e.text}`);
+}
+
+function freshEvents(prevKeys, events) {
+  const keys = eventKeys(events);
+  if (!prevKeys.length) return { keys, fresh: events || [] };
+  for (let shift = 0; shift <= prevKeys.length; shift++) {
+    const tail = prevKeys.slice(shift);
+    const head = keys.slice(0, tail.length);
+    if (tail.every((k, i) => k === head[i])) return { keys, fresh: (events || []).slice(tail.length) };
+  }
+  return { keys, fresh: [] };
+}
+
+function noteLive(state) {
+  const c = state?.coach;
+  if (!c?.exercise) return;
+  const id = c.exercise.id;
+  if (!session.primed) {
+    session.primed = true;
+    session.lastEx = id;
+    session.lastRepN = c.rep_count || 0;
+    session.prevEvents = eventKeys(c.events);
+    return;
+  }
+  if (id !== session.lastEx) {
+    session.lastEx = id;
+    session.lastRepN = 0;
+    session.prevEvents = eventKeys(c.events);
+  }
+  let bucket = session.exercises.get(id);
+  if (!bucket) {
+    bucket = { name: c.exercise.name, reps: [], rejected: [], best: null };
+    session.exercises.set(id, bucket);
+  } else bucket.name = c.exercise.name;
+  if ((c.rep_count || 0) < session.lastRepN) session.lastRepN = 0;
+  for (const r of c.reps || []) {
+    if (r.n > session.lastRepN) bucket.reps.push({ peak: r.peak, issues: r.issues || [] });
+  }
+  session.lastRepN = Math.max(session.lastRepN, c.rep_count || 0);
+  const turned = freshEvents(session.prevEvents, c.events);
+  session.prevEvents = turned.keys;
+  for (const ev of turned.fresh) {
+    if (REJECT_CODES.has(ev.code)) bucket.rejected.push(ev.text);
+  }
+  const metric = state.angles?.[c.exercise.metric];
+  if (metric && metric.value != null && Number.isFinite(metric.value)) {
+    bucket.best = bucket.best == null ? metric.value : Math.max(bucket.best, metric.value);
+  }
+}
+
+function resetPageSession() {
+  session.checkins = [];
+  session.exercises = new Map();
+  session.lastEx = null;
+  session.lastRepN = 0;
+  session.prevEvents = [];
+  session.primed = false;
+  awaitingCheckin = true;
+}
+
+function fillSummary() {
+  const root = $('#summary-body');
+  root.replaceChildren();
+  if (!session.exercises.size) {
+    const p = document.createElement('p');
+    p.className = 'rec-note';
+    p.textContent = 'No exercise was measured in this session.';
+    root.append(p);
+  }
+  for (const ex of session.exercises.values()) {
+    const block = document.createElement('section');
+    block.className = 'summary-ex';
+    const h = document.createElement('h4');
+    h.textContent = ex.name;
+    const counted = document.createElement('p');
+    counted.textContent = `Counted: ${ex.reps.length}`;
+    const rejected = document.createElement('p');
+    rejected.textContent = ex.rejected.length
+      ? `Rejected: ${ex.rejected.length} — ${ex.rejected.join('; ')}`
+      : 'Rejected: 0';
+    const comps = [...new Set(ex.reps.flatMap((r) => r.issues))];
+    block.append(h, counted, rejected);
+    if (comps.length) {
+      const comp = document.createElement('p');
+      comp.textContent = `Compensations: ${comps.join('; ')}`;
+      block.append(comp);
+    }
+    const best = document.createElement('p');
+    best.className = 'deg';
+    best.textContent = ex.best == null ? 'unavailable' : `${Math.round(ex.best)}°`;
+    block.append(best);
+    root.append(block);
+  }
+  const painH = document.createElement('h4');
+  painH.textContent = 'Pain check-ins';
+  const list = document.createElement('ul');
+  list.className = 'summary-pain';
+  if (!session.checkins.length) {
+    const li = document.createElement('li');
+    li.textContent = 'No pain check-in.';
+    list.append(li);
+  } else {
+    for (const c of session.checkins) {
+      const li = document.createElement('li');
+      const clock = c.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      li.textContent = c.stopped ? `${c.value} / 10 at ${clock} · stopped` : `${c.value} / 10 at ${clock}`;
+      list.append(li);
+    }
+  }
+  root.append(painH, list);
+}
 let avatar = null;
 let anatomy = null;
 let t = 0;
@@ -265,6 +396,7 @@ function render(state) {
       box.appendChild(el);
     }
   }
+  noteLive(state);
   renderRecorder(state.recorder);
   renderAutodetect(state.autodetect, c);
   vision.update(state);
@@ -309,6 +441,7 @@ connectLive(render, (online) => {
   el.className = `conn ${online ? 'on' : 'off'}`;
   el.querySelector('b').textContent = online ? 'Live' : 'Reconnecting';
   if (!online) { $('#guidance').textContent = 'Station offline: reconnecting'; $('#guidance').dataset.ok = 'no'; }
+  else if (awaitingCheckin) setPaused(true);
 });
 
 // ---------------------------------------------------------------- controls
@@ -424,6 +557,53 @@ $('#rest-btn').addEventListener('click', async (e) => {
     btn.textContent = 'Station offline';
   }
   setTimeout(() => { btn.textContent = 'Calibrate rest'; btn.disabled = false; }, 2500);
+});
+
+function showPainCard() {
+  $('#pain-stop-line').hidden = true;
+  document.querySelectorAll('[data-pain]').forEach((b) => b.classList.remove('on'));
+  $('#pain-card').hidden = false;
+}
+
+function submitPain(value) {
+  const stopped = value >= PAIN_STOP;
+  session.checkins.push({ value, at: new Date(), stopped });
+  document.querySelectorAll('[data-pain]').forEach((b) => b.classList.toggle('on', Number(b.dataset.pain) === value));
+  if (stopped) {
+    $('#pain-stop-line').hidden = false;
+    agent.paused = true;
+    awaitingCheckin = false;
+    setPaused(true);
+    agent.say(PAIN_STOP_LINE, { priority: 3, kind: 'warn' });
+    if (!agent.voiceOn && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(PAIN_STOP_LINE);
+      u.lang = 'en-IN';
+      window.speechSynthesis.speak(u);
+    }
+    return;
+  }
+  $('#pain-stop-line').hidden = true;
+  if (awaitingCheckin) {
+    awaitingCheckin = false;
+    agent.paused = false;
+    setPaused(false);
+  }
+  $('#pain-card').hidden = true;
+}
+
+document.querySelectorAll('[data-pain]').forEach((b) => b.addEventListener('click', () => submitPain(Number(b.dataset.pain))));
+$('#pain-btn').addEventListener('click', showPainCard);
+$('#end-btn').addEventListener('click', () => {
+  fillSummary();
+  $('#summary-card').hidden = false;
+});
+$('#summary-close').addEventListener('click', () => { $('#summary-card').hidden = true; });
+$('#summary-new').addEventListener('click', () => {
+  resetPageSession();
+  $('#summary-card').hidden = true;
+  showPainCard();
+  setPaused(true);
 });
 
 api('/api/exercises').then((list) => { for (const e of list) ui.exercises[e.id] = e; }).catch(() => {});

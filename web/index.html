@@ -14,7 +14,7 @@
 
     <header class="top">
       <div class="brand">
-        <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 20c3-7 11-10 15-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="9" cy="20" r="2.6" fill="currentColor"/></svg>
+        <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#f5f2ea"/><g stroke="#0a4a4f" stroke-linecap="round" fill="none"><path d="M30.3 20.2 L19.5 50 M33.7 20.2 L44.5 50" stroke-width="4.2"/><circle cx="32" cy="15" r="4.6" stroke-width="3.8"/><path d="M24.6 36.6 Q32 39.6 39.6 35.6" stroke-width="2.6"/><path d="M26.6 40.4 L26.1 42.4 M29.2 41.2 L29 43.3 M31.8 41.5 L31.8 43.6 M34.4 41.2 L34.7 43.3 M37 40.4 L37.6 42.3" stroke-width="1.5"/></g><circle cx="39.6" cy="35.6" r="2.6" fill="#0a4a4f"/></svg>
         <div><strong>Auri</strong><span>Clinic station</span></div>
       </div>
 
@@ -37,6 +37,8 @@
         </label>
         <button id="rest-btn" class="btn-quiet">Calibrate rest</button>
         <button id="auto-btn" class="btn-quiet" aria-pressed="false" hidden>Auto-detect</button>
+        <button id="pain-btn" class="btn-quiet">Pain check</button>
+        <button id="end-btn" class="btn-quiet">End session</button>
         <button id="rec-btn" class="btn-quiet" aria-expanded="false" aria-controls="rec-drawer">Record dataset</button>
       </nav>
 
@@ -166,6 +168,28 @@
           <button id="rec-stop" class="toggle">Stop</button>
         </div>
         <p class="rec-note" id="rec-dir"></p>
+      </div>
+    </aside>
+    <aside id="pain-card" class="sheet" aria-label="Pain check-in">
+      <header><h3>Pain check</h3><p class="rec-note">How does the shoulder feel right now?</p></header>
+      <p class="pain-ends"><span>No pain</span><span>Worst</span></p>
+      <div class="pain-scale" role="group" aria-label="Pain from 0, no pain, to 10, worst">
+        <button type="button" data-pain="0">0</button><button type="button" data-pain="1">1</button>
+        <button type="button" data-pain="2">2</button><button type="button" data-pain="3">3</button>
+        <button type="button" data-pain="4">4</button><button type="button" data-pain="5">5</button>
+        <button type="button" data-pain="6">6</button><button type="button" data-pain="7">7</button>
+        <button type="button" data-pain="8">8</button><button type="button" data-pain="9">9</button>
+        <button type="button" data-pain="10">10</button>
+      </div>
+      <p id="pain-stop-line" class="pain-stop" hidden>Please stop and rest. Tell your physiotherapist about this pain.</p>
+    </aside>
+
+    <aside id="summary-card" class="sheet" aria-label="Session summary" hidden>
+      <header><h3>This session</h3></header>
+      <div id="summary-body"></div>
+      <div class="rec-btns">
+        <button type="button" id="summary-close" class="btn-quiet">Close</button>
+        <button type="button" id="summary-new" class="toggle">New session</button>
       </div>
     </aside>
     <script type="module" src="/src/main.js"></script>
