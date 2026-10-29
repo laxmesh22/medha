@@ -132,6 +132,15 @@ function resetPageSession() {
 function fillSummary() {
   const root = $('#summary-body');
   root.replaceChildren();
+  const since = document.createElement('p');
+  since.className = 'rec-note';
+  if (session.checkins.length) {
+    const clock = session.checkins[0].at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    since.textContent = `Since your pain check at ${clock}`;
+  } else {
+    since.textContent = 'No pain check yet.';
+  }
+  root.append(since);
   if (!session.exercises.size) {
     const p = document.createElement('p');
     p.className = 'rec-note';
@@ -158,7 +167,7 @@ function fillSummary() {
     }
     const best = document.createElement('p');
     best.className = 'deg';
-    best.textContent = ex.best == null ? 'unavailable' : `${Math.round(ex.best)}°`;
+    best.textContent = ex.best == null ? 'Best angle: unavailable' : `Best angle: ${Math.round(ex.best)}°`;
     block.append(best);
     root.append(block);
   }
