@@ -310,7 +310,8 @@ void setup() {
   Serial.printf("Auri strap %u.%u.%u, %s, unit %u (%s), protocol v%u\n", FW_MAJOR, FW_MINOR, FW_PATCH, CHIP,
                 AURI_UNIT, DEVICE_NAME, PROTOCOL_VERSION);
 
-  Wire.begin(PIN_SDA, PIN_SCL, I2C_HZ);
+  Wire.begin(I2C_SDA, I2C_SCL, I2C_HZ);
+  Serial.printf("i2c SDA GPIO%d, SCL GPIO%d, %lu Hz\n", I2C_SDA, I2C_SCL, (unsigned long)I2C_HZ);
   for (size_t i = 0; i < IMU_COUNT; i++) imus[i].slot = IMU_SLOTS[i];
   detectImus();
   if (UNIT_HAS_HAPTICS && i2cAck(0x5A) && drv.begin(&Wire)) {

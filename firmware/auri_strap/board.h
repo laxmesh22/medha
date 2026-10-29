@@ -38,6 +38,19 @@ static const int PIN_RST = 4;  // D3
 #error "Auri strap firmware supports the XIAO ESP32-C3 and ESP32-S3"
 #endif
 
+// Bench override for a board wired off-spec, e.g. -DAURI_PIN_SDA=7 -DAURI_PIN_SCL=21 for the first C3 bench unit
+// (STEMMA wires on D5/D6 instead of D4/D5). Avoid GPIO21 in a pod: it is UART0 TX and the ROM prints on it at reset.
+#ifdef AURI_PIN_SDA
+#define I2C_SDA AURI_PIN_SDA
+#else
+#define I2C_SDA PIN_SDA
+#endif
+#ifdef AURI_PIN_SCL
+#define I2C_SCL AURI_PIN_SCL
+#else
+#define I2C_SCL PIN_SCL
+#endif
+
 static const uint32_t I2C_HZ = 400000;  // handoff §6.2: drop to 100 kHz if the bus is flaky
 
 // ---- sensors per unit (handoff §6.2 addresses) ---------------------------------------------------------------------

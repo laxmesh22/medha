@@ -7,6 +7,7 @@ The seconds argument is the first listen window (default 50 Hz). Command tests f
 from __future__ import annotations
 
 import asyncio
+import math
 import statistics
 import sys
 import time
@@ -18,6 +19,10 @@ import auri_ble  # noqa: E402
 NAMES = ("AURI-ARM", "AURI-TRUNK")
 
 
+def _norm(v: tuple[float, ...]) -> float:
+    return math.sqrt(sum(x * x for x in v))
+
+
 class Bucket:
     def __init__(self) -> None:
         self.packets = 0
@@ -25,15 +30,30 @@ class Bucket:
         self.seqs: list[int] = []
         self.t0: float | None = None
         self.t1: float | None = None
+        self.accuracy = [0, 0, 0, 0]
+        self.quats: list[tuple[float, float, float, float]] = []
+        self.flags: list[tuple[bool, bool]] = []  # (valid, reset) in arrival order
+        self.gyro: list[tuple[float, float, float]] = []
+        self.gravity: list[tuple[float, float, float]] = []
 
-    def add(self, seq: int, valid: bool) -> None:
+    def add(self, sample: auri_ble.ImuSample) -> None:
         now = time.perf_counter()
         if self.t0 is None:
             self.t0 = now
         self.t1 = now
         self.packets += 1
-        self.valid += int(valid)
-        self.seqs.append(seq)
+        self.valid += int(sample.valid)
+        self.seqs.append(sample.seq)
+        if 0 <= sample.accuracy <= 3:
+            self.accuracy[sample.accuracy] += 1
+        self.quats.append(sample.quat)
+        self.flags.append((sample.valid, sample.reset))
+
+    def add_raw(self, sample: auri_ble.RawSample) -> None:
+        if sample.gyro is not None:
+            self.gyro.append(sample.gyro)
+        if sample.gravity is not None:
+            self.gravity.append(sample.gravity)
 
     def gaps(self) -> int:
         missing = 0
@@ -64,6 +84,28 @@ def report(title: str, buckets: dict[int, Bucket]) -> None:
             f"sensor {sensor} ({name}): packets {b.packets} rate {b.rate():.2f} Hz "
             f"seq_gaps {b.gaps()} valid {valid_pct:.1f}%"
         )
+        print(f"  accuracy histogram 0-3: {b.accuracy[0]} {b.accuracy[1]} {b.accuracy[2]} {b.accuracy[3]}")
+        if b.quats:
+            norms = [_norm(q) for q in b.quats]
+            print(
+                f"  quat norm min {min(norms):.4f} median {statistics.median(norms):.4f} max {max(norms):.4f}"
+            )
+            show = list(enumerate(b.quats))
+            picked = show[:3] + show[-3:] if len(show) > 6 else show
+            for i, q in picked:
+                print(f"  quat[{i}] w {q[0]:.4f} x {q[1]:.4f} y {q[2]:.4f} z {q[3]:.4f} norm {_norm(q):.4f}")
+        if b.gyro:
+            cols = list(zip(*b.gyro))
+            spans = " ".join(f"{min(c):.3f}..{max(c):.3f}" for c in cols)
+            print(f"  gyro rad/s xyz {spans}")
+        if b.gravity:
+            cols = list(zip(*b.gravity))
+            spans = " ".join(f"{min(c):.3f}..{max(c):.3f}" for c in cols)
+            gn = [_norm(g) for g in b.gravity]
+            print(f"  gravity m/s^2 xyz {spans}")
+            print(
+                f"  gravity norm min {min(gn):.3f} median {statistics.median(gn):.3f} max {max(gn):.3f}"
+            )
 
 
 async def main() -> int:
@@ -99,12 +141,13 @@ async def main() -> int:
 
     def on_imu(_sender, data: bytearray) -> None:
         sample = auri_ble.decode_imu(take(data))
-        buckets.setdefault(sample.sensor, Bucket()).add(sample.seq, sample.valid)
+        buckets.setdefault(sample.sensor, Bucket()).add(sample)
 
     def on_raw(_sender, data: bytearray) -> None:
         nonlocal raw_count
-        auri_ble.decode_raw(take(data))
+        sample = auri_ble.decode_raw(take(data))
         raw_count += 1
+        buckets.setdefault(sample.sensor, Bucket()).add_raw(sample)
 
     def on_status(_sender, data: bytearray) -> None:
         obj = auri_ble.decode_status(take(data))
@@ -127,6 +170,7 @@ async def main() -> int:
         buckets.clear()
         await asyncio.sleep(seconds)
         print(f"raw packets in first window: {raw_count}")
+        print(f"sensor 15 packets: {buckets[15].packets if 15 in buckets else 0}")
         report(f"listen {seconds:.0f}s at default rate", buckets)
 
         rtts: list[float] = []
@@ -170,8 +214,32 @@ async def main() -> int:
             print(f"raw packets during {label}: {raw_count}")
             report(label, buckets)
 
+        before = auri_ble.decode_status(bytes(await client.read_gatt_char(auri_ble.STATUS_UUID)))
+        print(f"STATUS before 100 Hz: {before}")
         await client.write_gatt_char(auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_RATE, 100), response=True)
-        await listen("rate 100 Hz for 5s", 5.0)
+        await listen("rate 100 Hz for 10s", 10.0)
+        after = auri_ble.decode_status(bytes(await client.read_gatt_char(auri_ble.STATUS_UUID)))
+        print(f"STATUS after 100 Hz: {after}")
+
+        buckets.clear()
+        await client.write_gatt_char(
+            auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_IMU_RESET, 0x01), response=True
+        )
+        await asyncio.sleep(3.0)
+        print("IMU reset mask 0x01, next 3s:")
+        report("after IMU reset", buckets)
+        for sensor in sorted(buckets):
+            flags = buckets[sensor].flags
+
+            def mark(valid: bool, reset: bool) -> str:
+                if reset and valid:
+                    return "r"  # valid sample that also carries the reset flag
+                if reset:
+                    return "R"
+                return "V" if valid else "0"
+
+            marks = "".join(mark(valid, reset) for valid, reset in flags)
+            print(f"  sensor {sensor} flag trace ({len(marks)}): {marks}")
         await client.write_gatt_char(auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_RATE, 50), response=True)
         await listen("rate 50 Hz for 5s", 5.0)
         await client.write_gatt_char(auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_STREAM, 0), response=True)
