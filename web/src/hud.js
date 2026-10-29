@@ -5,10 +5,11 @@ const BONES = [[5, 6], [5, 7], [7, 9], [6, 8], [8, 10], [5, 11], [6, 12], [11, 1
 const ARM = { right: [6, 8, 10], left: [5, 7, 9] };
 const ARM_LABEL = ['Shoulder', 'Elbow', 'Wrist'];
 export const PALETTE = {
-  accent: '#4fc6a6', warn: '#e3a24a', danger: '#e06c64', t1: '#e8edf3', t2: '#a3afbf', t3: '#6b7686', line: 'rgba(160,178,200,0.10)',
+  accent: '#0a4a4f', warn: '#8a5a00', danger: '#a42828', t1: '#10201f', t2: '#4a5857', t3: '#4a5857',
+  line: 'rgba(16,32,31,0.10)', on: '#f5f2ea', soft: '#dcebe8', warning: '#fab219', serious: '#ec835a',
 };
-const MONO = '"Geist Mono Variable", ui-monospace, Consolas, monospace';
-const SANS = '"Geist Variable", system-ui, sans-serif';
+const MONO = 'ui-monospace, "Cascadia Mono", Consolas, monospace';
+const SANS = 'system-ui, "Segoe UI", Roboto, sans-serif';
 
 function fitCanvas(c, w, h) {
   const dpr = Math.min(window.devicePixelRatio, 2);
@@ -24,77 +25,208 @@ export class VisionPanel {
     this.c = canvas;
     this.img = img;
     this.state = null;
+    this.byFrame = new Map();
+    this.preview = null;
+    this.live = true;
     this.t0 = performance.now();
+    this.paints = 0;
+    this.matches = 0;
+    this.closed = 0;
+    this.delays = [];
+    this.firstPaint = null;
+    this.lastPaint = null;
+    this.lastPainted = null;
+    this.lastMatched = false;
+    window.__auriVision = this;
     new ResizeObserver(() => this.resize()).observe(canvas.parentElement);
     this.resize();
-    const loop = () => { this.draw(); requestAnimationFrame(loop); };
+    const loop = () => {
+      try { this.draw(); }
+      catch (err) { this.error = String(err && err.stack ? err.stack : err); }
+      requestAnimationFrame(loop);
+    };
     requestAnimationFrame(loop);
   }
 
   resize() {
     this.w = this.c.parentElement.clientWidth;
-    this.h = Math.round(this.w / (this.state?.image_aspect || 16 / 9));
+    const bmp = this.preview?.bmp;
+    const aspect = bmp ? bmp.width / bmp.height : (this.state?.image_aspect || 4 / 3);
+    this.h = Math.round(this.w / aspect);
     this.ctx = fitCanvas(this.c, this.w, this.h);
   }
 
-  update(state) {
-    const changed = state.image_aspect && state.image_aspect !== this.state?.image_aspect;
+  resetStats() {
+    this.paints = 0;
+    this.fetched = 0;
+    this.matches = 0;
+    this.closed = 0;
+    this.delays = [];
+    this.firstPaint = null;
+    this.lastPaint = null;
+    this.lastPainted = null;
+    this.lastMatched = false;
+  }
+
+  update(state, preview) {
     this.state = state;
-    if (changed) this.resize();
+    if (state?.frame != null) {
+      this.byFrame.set(state.frame, state);
+      for (const key of this.byFrame.keys()) {
+        if (key < state.frame - 12) this.byFrame.delete(key);
+      }
+    }
+    const bmp = this.preview?.bmp;
+    const aspect = bmp ? bmp.width / bmp.height : state?.image_aspect;
+    if (aspect && this.h && Math.abs(aspect - this.w / this.h) > 0.02) this.resize();
+  }
+
+  startPreview() {
+    this.live = true;
+    if (!this._worker) {
+      // Fetch and JPEG decode stay off the UI thread. Only the newest bitmap is posted,
+      // so a slow paint cannot build a queue of old frames.
+      const source = [
+        'let after = -1, live = false, posted = false, pending = null, started = false;',
+        'function flush() {',
+        '  if (!pending || posted) return;',
+        '  posted = true; const shot = pending; pending = null;',
+        '  self.postMessage(shot, [shot.bmp]);',
+        '}',
+        'self.onmessage = (ev) => {',
+        '  if (ev.data === "stop") { live = false; return; }',
+        '  if (ev.data === "ack") { posted = false; flush(); return; }',
+        '  if (ev.data === "start") { live = true; if (!started) { started = true; pump(); } }',
+        '};',
+        'async function pump() {',
+        '  while (true) {',
+        '    if (!live) { await new Promise((r) => setTimeout(r, 50)); continue; }',
+        '    let res;',
+        '    try { res = await fetch("/api/camera/preview.jpg?after=" + after, { cache: "no-store" }); }',
+        '    catch (err) { await new Promise((r) => setTimeout(r, 200)); continue; }',
+        '    if (!live || res.status === 204) continue;',
+        '    const frame = Number(res.headers.get("X-Auri-Frame"));',
+        '    const tMs = Number(res.headers.get("X-Auri-Time"));',
+        '    if (!Number.isFinite(frame) || frame <= after) continue;',
+        '    let bmp;',
+        '    try { bmp = await createImageBitmap(await res.blob()); }',
+        '    catch (err) { continue; }',
+        '    after = frame;',
+        '    if (pending) pending.bmp.close();',
+        '    pending = { frame: frame, t_ms: Number.isFinite(tMs) ? tMs : null, bmp: bmp };',
+        '    flush();',
+        '  }',
+        '}',
+      ].join('\n');
+      this._worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })));
+      this._worker.onmessage = (ev) => {
+        const shot = ev.data;
+        if (!this.live || (this.preview && shot.frame < this.preview.frame)) {
+          shot.bmp.close();
+          this._worker.postMessage('ack');
+          return;
+        }
+        if (this.preview?.bmp) this.preview.bmp.close();
+        this.preview = shot;
+        this.fetched = (this.fetched || 0) + 1;
+        const aspect = shot.bmp.width / shot.bmp.height;
+        if (this.h && Math.abs(aspect - this.w / this.h) > 0.02) this.resize();
+        try { this.draw(); }
+        catch (err) { this.error = String(err && err.stack ? err.stack : err); }
+        this._worker.postMessage('ack');
+      };
+    }
+    this._worker.postMessage('start');
+  }
+
+  stopPreview() {
+    this.live = false;
+    if (this._worker) this._worker.postMessage('stop');
   }
 
   draw() {
     const { ctx, w, h } = this;
-    const s = this.state;
     const t = (performance.now() - this.t0) / 1000;
-    const videoOn = this.img && !this.img.hidden && this.img.naturalWidth > 0;
+    const show = this.live && this.preview?.bmp;
     ctx.clearRect(0, 0, w, h);
-    if (!videoOn) { // privacy mode: dotted field instead of video
-      ctx.fillStyle = 'rgba(160,178,200,0.10)';
+    let s = null;
+    let mirror = false;
+    if (!show) {
+      ctx.fillStyle = 'rgba(245,242,234,0.35)';
       for (let x = 10; x < w; x += 18) for (let y = 10; y < h; y += 18) ctx.fillRect(x, y, 1.2, 1.2);
+      const sy = ((t * 0.3) % 1) * h;
+      const g = ctx.createLinearGradient(0, sy - 40, 0, sy);
+      g.addColorStop(0, 'rgba(245,242,234,0)'); g.addColorStop(1, 'rgba(245,242,234,0.14)');
+      ctx.fillStyle = g; ctx.fillRect(0, sy - 40, w, 40);
+      s = this.state;
+    } else {
+      const shot = this.preview;
+      mirror = document.getElementById('mirror')?.checked !== false;
+      ctx.drawImage(shot.bmp, mirror ? w : 0, 0, mirror ? -w : w, h);
+      if (shot.frame !== this.lastPainted) {
+        if (this.lastPainted != null) {
+          this.closed += 1;
+          if (this.lastMatched) this.matches += 1;
+        }
+        this.lastPainted = shot.frame;
+        this.lastMatched = this.byFrame.has(shot.frame);
+        this.paints += 1;
+        const now = performance.now();
+        if (this.firstPaint == null) this.firstPaint = now;
+        this.lastPaint = now;
+        if (Number.isFinite(shot.t_ms)) {
+          this.delays.push(Date.now() - shot.t_ms);
+          if (this.delays.length > 4000) this.delays.splice(0, this.delays.length - 4000);
+        }
+      } else if (this.byFrame.has(shot.frame)) {
+        this.lastMatched = true;
+      }
+      // Skeleton only from this JPEG's frame. A newer pose is not drawn on an older image.
+      s = this.byFrame.get(shot.frame) || null;
     }
-    const sy = ((t * 0.3) % 1) * h; // sweep
-    const g = ctx.createLinearGradient(0, sy - 40, 0, sy);
-    g.addColorStop(0, 'rgba(79,198,166,0)'); g.addColorStop(1, 'rgba(79,198,166,0.10)');
-    ctx.fillStyle = g; ctx.fillRect(0, sy - 40, w, 40);
 
     const kp = s?.kp2d, sc = s?.scores;
     if (!kp) {
-      this.text(w / 2, h / 2, 'Looking for a person', PALETTE.t3, 14, 'center', SANS);
+      if (!show) this.text(w / 2, h / 2, 'Looking for a person', PALETTE.on, 14, 'center', SANS);
+      else this.text(10, h - 10, this._foot(show), PALETTE.soft, 10.5, 'left', MONO);
       return;
     }
-    const P = (i) => [kp[i][0] * w, kp[i][1] * h];
+    const P = (i) => {
+      const u = mirror ? 1 - kp[i][0] : kp[i][0];
+      return [u * w, kp[i][1] * h];
+    };
     const ok = (i) => sc && sc[i] >= 0.4;
-    ctx.lineWidth = 2; ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(232,237,243,0.55)';
+    ctx.lineCap = 'round';
     for (const [a, b] of BONES) {
       if (!ok(a) || !ok(b)) continue;
-      ctx.beginPath(); ctx.moveTo(...P(a)); ctx.lineTo(...P(b)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(...P(a)); ctx.lineTo(...P(b));
+      ctx.strokeStyle = '#063a3e'; ctx.lineWidth = 4; ctx.stroke();
+      ctx.strokeStyle = PALETTE.on; ctx.lineWidth = 2; ctx.stroke();
     }
     for (let i = 0; i < kp.length; i++) {
       if (!sc || sc[i] < 0.2) continue;
       const [x, y] = P(i);
-      ctx.fillStyle = sc[i] >= 0.7 ? PALETTE.accent : sc[i] >= 0.4 ? PALETTE.warn : PALETTE.danger;
+      ctx.fillStyle = sc[i] >= 0.7 ? PALETTE.on : sc[i] >= 0.4 ? PALETTE.warning : PALETTE.serious;
       ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
     }
-    const pts = kp.filter((_, i) => ok(i)).map((p) => [p[0] * w, p[1] * h]);
+    const pts = kp.map((_, i) => (ok(i) ? P(i) : null)).filter(Boolean);
     if (pts.length > 3) { // corner brackets around the tracked person
       const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
       const x0 = Math.min(...xs) - 16, x1 = Math.max(...xs) + 16, y0 = Math.min(...ys) - 22, y1 = Math.max(...ys) + 16;
-      ctx.strokeStyle = PALETTE.accent; ctx.lineWidth = 1.5;
+      ctx.strokeStyle = PALETTE.on; ctx.lineWidth = 1.5;
       for (const [cx, cy, dx, dy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) {
         ctx.beginPath(); ctx.moveTo(cx, cy + dy * 12); ctx.lineTo(cx, cy); ctx.lineTo(cx + dx * 12, cy); ctx.stroke();
       }
       const conf = sc.reduce((a, b) => a + Math.min(b, 1), 0) / sc.length;
-      this.text(x0, y0 - 7, `patient  ${(conf * 100).toFixed(0)}%`, PALETTE.accent, 11, 'left', MONO);
+      this.text(x0, y0 - 7, `patient  ${(conf * 100).toFixed(0)}%`, PALETTE.on, 11, 'left', MONO);
     }
     const arm = ARM[s.side] || ARM.right;
     arm.forEach((i, k) => {
       if (!ok(i)) return;
       const [x, y] = P(i);
-      ctx.strokeStyle = 'rgba(232,237,243,0.7)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(245,242,234,0.85)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(x, y, 9 + 1.5 * Math.sin(t * 4 + k), 0, Math.PI * 2); ctx.stroke();
-      this.text(x + 13, y + 4, `${ARM_LABEL[k]} ${(Math.min(sc[i], 1) * 100).toFixed(0)}%`, PALETTE.t2, 10.5, 'left', MONO);
+      this.text(x + 13, y + 4, `${ARM_LABEL[k]} ${(Math.min(sc[i], 1) * 100).toFixed(0)}%`, PALETTE.on, 10.5, 'left', MONO);
     });
     const e = s.angles?.elevation;
     if (ok(arm[0]) && ok(arm[1]) && ok(11) && ok(12)) {
@@ -104,11 +236,18 @@ export class VisionPanel {
       const down = Math.atan2(hip[1] - sh[1], hip[0] - sh[0]);
       let d = Math.atan2(ey - sy2, ex - sx) - down;
       while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
-      ctx.strokeStyle = e?.value != null ? PALETTE.accent : PALETTE.t3; ctx.lineWidth = 3;
+      ctx.strokeStyle = e?.value != null ? PALETTE.on : PALETTE.soft; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(sx, sy2, 32, down, down + d, d < 0); ctx.stroke();
-      this.text(sx + (d > 0 ? -76 : 40), sy2 - 36, e?.value != null ? `${Math.round(e.value)}°` : 'n/a', PALETTE.t1, 17, 'left', SANS, true);
+      this.text(sx + (d > 0 ? -76 : 40), sy2 - 36, e?.value != null ? `${Math.round(e.value)}°` : 'n/a', PALETTE.on, 17, 'left', SANS, true);
     }
-    this.text(10, h - 10, `${s.fps} fps  ${s.proc_ms} ms  ${videoOn ? 'live video' : 'privacy mode: keypoints only'}`, PALETTE.t3, 10.5, 'left', MONO);
+    this.text(10, h - 10, this._foot(show), PALETTE.soft, 10.5, 'left', MONO);
+  }
+
+  _foot(show) {
+    const s = this.state;
+    const fps = s?.fps ?? '';
+    const ms = s?.proc_ms ?? '';
+    return `${fps} fps  ${ms} ms  ${show ? 'live video' : 'privacy mode: keypoints only'}`;
   }
 
   text(x, y, str, color, size, align, family, box = false) {
@@ -117,7 +256,7 @@ export class VisionPanel {
     ctx.textAlign = align;
     if (box) {
       const m = ctx.measureText(str);
-      ctx.fillStyle = 'rgba(11,15,20,0.8)';
+      ctx.fillStyle = '#063a3e';
       ctx.beginPath(); ctx.roundRect(x - 6, y - size - 2, m.width + 12, size + 9, 6); ctx.fill();
     }
     ctx.fillStyle = color;

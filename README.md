@@ -8,7 +8,7 @@ The clinic station measures shoulder range from a camera and coaches three exerc
 
 | Part | Where | Run |
 |---|---|---|
-| Station (hub + web UI) | `hub/`, `web/` | `hub\.venv\Scripts\python.exe -m physiobuddy_hub run --sim --motionnet off` then http://localhost:8000 |
+| Station (hub + web UI) | `hub/`, `web/` | `hub\.venv\Scripts\python.exe -m physiobuddy_hub run --sim --motionnet off` then http://localhost:8000. No RealSense: `run --webcam 0` (needs `external/AURIII`, see docs/SHOWCASE.md) |
 | Movement judging | `ml/` | `hub\.venv\Scripts\python.exe ml\train_motionnet.py --public --folds 5` |
 | Clinician dashboard | `clinician/`, live at https://auri-clinician.vercel.app | `$env:VITE_FORCE_DEMO='1'; npm run dev` in `clinician/` then http://localhost:5175 |
 | Hardware CAD | `hardware/` | `tools\cad\.venv\Scripts\python.exe hardware\cad\physio_pod.py` |

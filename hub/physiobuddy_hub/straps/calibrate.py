@@ -68,22 +68,39 @@ def strap_frame(cal: Optional[StrapCalibration], snap: dict):
     return angles, {"angles": angles, "gyro": gyro, "up": up}
 
 
+def _keep(buckets, seen, name, quat, gyro, seq) -> None:
+    if name not in buckets or quat is None:
+        return
+    if seq is not None:
+        key = (name, seq)
+        if key in seen:
+            return
+        seen.add(key)
+    buckets[name].append((quat, gyro))
+
+
 async def collect_samples(link, seconds: float) -> dict:
-    """Unique samples (by seq) over ``seconds``. Does not block the camera thread."""
+    """Unique samples (by seq) over ``seconds``. Does not block the camera thread.
+
+    The link keeps every packet, not only the latest. A poll of the snapshot misses
+    packets that arrived in the same burst, which is what happens while the webcam runs.
+    """
     buckets = {name: [] for name in SENSORS}
     seen = set()
+    drain = getattr(link, "drain_new", None)
+    if drain is not None and hasattr(link, "discard_pending"):
+        link.discard_pending()
     end = time.perf_counter() + seconds
     while time.perf_counter() < end:
-        snap = link.snapshot()
-        for name, view in snap.items():
-            if name not in buckets or not view or not view.get("available") or view.get("quat") is None:
-                continue
-            seq = view.get("seq")
-            if seq is not None:
-                key = (name, seq)
-                if key in seen:
+        if drain is not None:
+            for name, rows in drain().items():
+                for quat, gyro, seq in rows:
+                    _keep(buckets, seen, name, quat, gyro, seq)
+        else:
+            snap = link.snapshot()
+            for name, view in snap.items():
+                if not view or not view.get("available"):
                     continue
-                seen.add(key)
-            buckets[name].append((view["quat"], view.get("gyro")))
+                _keep(buckets, seen, name, view.get("quat"), view.get("gyro"), view.get("seq"))
         await asyncio.sleep(0.01)
     return buckets

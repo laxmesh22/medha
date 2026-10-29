@@ -45,3 +45,7 @@ firmware/.venv/
 tools/cursor_bridge/LIVE/
 firmware/backups/
 firmware/release/
+tools/cursor_bridge/LIVE_IMU/
+
+# Teammate AURI-CV checkout (no licence; not vendored). See tools/auri_cv_worker/.
+external/

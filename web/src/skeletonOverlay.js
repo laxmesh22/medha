@@ -11,14 +11,14 @@ export class SkeletonOverlay {
     this.group = new THREE.Group();
     this.joints = new THREE.InstancedMesh(
       new THREE.SphereGeometry(0.022, 12, 8),
-      new THREE.MeshBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true }),
+      new THREE.MeshBasicMaterial({ color: 0x0a4a4f, depthTest: false, transparent: true }),
       17,
     );
     this.joints.renderOrder = 10;
     this.pos = new Float32Array(BONES.length * 6);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
-    this.lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x38bdf8, depthTest: false, transparent: true }));
+    this.lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x0a4a4f, depthTest: false, transparent: true }));
     this.lines.renderOrder = 10;
     this.group.add(this.joints, this.lines);
     scene.add(this.group);

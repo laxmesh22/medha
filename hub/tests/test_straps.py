@@ -264,3 +264,56 @@ def test_calibrated_pose_matches_elevation_and_imu_width():
     vec, ok = imu_features(pipeline.nn.imu)
     assert ok and vec.shape == (D_IMU,)
     assert state["coach"]["exercise"]["id"] == "flexion"
+
+
+def test_two_unit1_pods_take_upper_arm_and_forearm():
+    from physiobuddy_hub.straps.link import StrapLink
+
+    arm = "14:63:93:BD:B4:7A"
+    fore = "14:63:93:BD:AB:6E"
+    plain = StrapLink([arm, fore])
+    plain._ensure(arm, "AURI-ARM", None)
+    plain._ensure(fore, "AURI-ARM", None)
+    plain._on_imu(arm, _imu(seq=1, quat=(1, 0, 0, 0)) + _raw(seq=1))
+    plain._on_imu(fore, _imu(seq=2, quat=(0, 1, 0, 0)) + _raw(seq=2))
+    collided = plain.snapshot()
+    assert set(collided) == {"upper_arm"}
+
+    link = StrapLink([arm, fore], slots={arm: "upper_arm", fore: "forearm"})
+    link._ensure(arm, "AURI-ARM", None)
+    link._ensure(fore, "AURI-ARM", None)
+    link._on_imu(arm, _imu(seq=1, quat=(1, 0, 0, 0)) + _raw(seq=1))
+    link._on_imu(fore, _imu(seq=2, quat=(0, 1, 0, 0)) + _raw(seq=2))
+    snap = link.snapshot()
+    assert snap["upper_arm"]["seq"] == 1
+    assert snap["forearm"]["seq"] == 2
+    assert abs(snap["upper_arm"]["quat"][0] - 1) < 1e-3
+    assert abs(snap["forearm"]["quat"][1] - 1) < 1e-3
+    from physiobuddy_hub.straps.protocol import Status
+
+    link._devices[fore].status = Status(2, "0.1.0", 1, (0,), (0,), None, 35, True, 50, False, 0)
+    shown = next(dev["sensors"] for dev in link.status()["devices"] if dev["address"] == fore)
+    assert set(shown) == {"forearm"}
+    slots = {dev["address"]: dev["slot"] for dev in link.status()["devices"]}
+    assert slots[arm] == "upper_arm" and slots[fore] == "forearm"
+
+
+def test_calibration_keeps_a_burst_the_snapshot_would_collapse():
+    import asyncio
+
+    from physiobuddy_hub.straps.calibrate import collect_samples
+    from physiobuddy_hub.straps.link import StrapLink
+
+    link = StrapLink(["AA:BB:CC:DD:EE:FF"])
+    link._ensure("AA:BB:CC:DD:EE:FF", "AURI-ARM", None)
+
+    async def run():
+        task = asyncio.create_task(collect_samples(link, 0.25))
+        await asyncio.sleep(0.05)
+        for seq in range(60):
+            link._on_imu("AA:BB:CC:DD:EE:FF", _imu(seq=seq, t_ms=seq * 20) + _raw(seq=seq, t_ms=seq * 20, gyro=(0.0, 0.0, 0.0)))
+        return await task
+
+    samples = asyncio.run(run())
+    assert link.snapshot()["upper_arm"]["seq"] == 59
+    assert len(samples["upper_arm"]) == 60

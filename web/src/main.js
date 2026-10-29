@@ -362,12 +362,15 @@ function renderAutodetect(ad, c) {
 }
 
 function render(state) {
+  const preview = state.preview;
+  if (preview) delete state.preview;
   ui.state = state;
   $('#fps').textContent = `${state.fps} fps · ${state.proc_ms} ms`;
   const g = state.guidance || [];
   const guide = $('#guidance');
-  guide.textContent = g.map((c) => GUIDANCE[c] || c).join(' · ');
-  guide.dataset.ok = g.length === 1 && g[0] === 'OK' ? 'yes' : 'no';
+  const hint = state.auri_cv && state.auri_cv.hint;
+  guide.textContent = hint || g.map((c) => GUIDANCE[c] || c).join(' · ');
+  guide.dataset.ok = !hint && g.length === 1 && g[0] === 'OK' ? 'yes' : 'no';
 
   const a = state.angles;
   const c = state.coach;
@@ -375,7 +378,7 @@ function render(state) {
   const m = a ? a[metricKey] : null;
   const readout = $('.readout');
   $('#ex-name').textContent = c?.exercise?.name || '';
-  $('#movement').textContent = a ? (MOVEMENT[a.movement] || 'Tracking') : 'No person tracked';
+  $('#movement').textContent = a ? (MOVEMENT[a.movement] || 'Tracking') : (hint ? 'Cannot measure' : 'No person tracked');
   $('#elev').textContent = fmt(m);
   $('#elev-note').textContent = !m || m.value === null
     ? `Measurement unavailable${m?.reason ? `: ${m.reason}` : ''}`
@@ -406,10 +409,11 @@ function render(state) {
     }
   }
   noteLive(state);
+  renderWebcam(state);
   renderStraps(state);
   renderRecorder(state.recorder);
   renderAutodetect(state.autodetect, c);
-  vision.update(state);
+  vision.update(state, preview);
   agent.observe(state, ui.explain);
 
   const kp = ui.mirror ? mirrorKeypoints(state.keypoints) : state.keypoints;
@@ -469,13 +473,52 @@ function deg(m) {
   return m && m.value != null ? `${Math.round(m.value)}°` : 'unavailable';
 }
 
+function renderWebcam(state) {
+  const card = $('#webcam-card');
+  if (!state.auri_cv) { card.hidden = true; return; }
+  card.hidden = false;
+  const engine = state.auri_cv;
+  const bits = [engine.quality || 'unavailable', engine.calibration || 'uncalibrated'];
+  if (engine.torso_mode) bits.push(engine.torso_mode);
+  $('#webcam-status').textContent = bits.join(' · ');
+  const comp = engine.compensation;
+  const reps = engine.rep_count == null ? 'unavailable' : String(engine.rep_count);
+  $('#webcam-extra').textContent = comp
+    ? `Reps ${reps} · ${engine.rep_state || 'unavailable'} · lean ${Math.round(comp.lateral_lean_deg)}° sideways, ${Math.round(comp.forward_lean_deg)}° forward`
+    : `Reps ${reps} · ${engine.rep_state || 'unavailable'} · compensation unavailable`;
+  const box = $('#webcam-compare');
+  box.innerHTML = '';
+  const hubElev = state.angles?.elevation;
+  const rows = [
+    ['Elevation', hubElev && hubElev.value != null ? `${Math.round(hubElev.value)}°` : 'unavailable', engine.elevation_deg],
+    ['Flexion', 'unavailable', engine.flexion_deg],
+    ['Abduction', 'unavailable', engine.abduction_deg],
+    ['Display elevation', 'unavailable', engine.display_elevation_deg],
+  ];
+  for (const [label, camera, raw] of rows) {
+    const row = document.createElement('div');
+    row.className = 'metric';
+    const strap = raw == null ? 'unavailable' : `${Math.round(raw)}°`;
+    row.innerHTML = `<dt>${label}</dt><div class="strap-pair">`
+      + `<div><span>Camera</span><b class="${camera === 'unavailable' ? 'missing' : ''}">${camera}</b></div>`
+      + `<div><span>Engine</span><b class="${strap === 'unavailable' ? 'missing' : ''}">${strap}</b></div></div>`;
+    box.appendChild(row);
+  }
+}
+
 function renderStraps(state) {
   const card = $('#straps-card');
   if (!state.straps) { card.hidden = true; return; }
   card.hidden = false;
   const devs = state.straps.devices || [];
   $('#straps-link').textContent = devs.length
-    ? devs.map((d) => `${d.name || d.address || 'strap'} · ${d.connected ? 'connected' : 'off'} · ${d.packet_rate_hz == null ? '--' : Math.round(d.packet_rate_hz)} Hz`).join('  ')
+    ? devs.map((d) => {
+      const who = [d.name || d.address || 'strap', d.slot].filter(Boolean).join(' ');
+      const fault = d.hardware ? ` · ${d.hardware}` : '';
+      if (!d.connected) return `${who} · off · searching${fault}`;
+      const hz = d.packet_rate_hz == null ? '' : ` · ${Math.round(d.packet_rate_hz)} Hz`;
+      return `${who} · connected${hz}${fault}`;
+    }).join('\n')
     : 'No strap connected';
   const cal = state.straps.calibration || { state: 'none' };
   const sensors = (cal.sensors || []).join(', ');
@@ -489,9 +532,11 @@ function renderStraps(state) {
     row.className = 'metric';
     const camM = cam?.[key];
     const stM = strap?.[key];
+    const why = stM && stM.value == null && stM.reason ? stM.reason : '';
     row.innerHTML = `<dt>${label}</dt><div class="strap-pair">`
       + `<div><span>Camera</span><b class="${camM && camM.value != null ? '' : 'missing'}">${deg(camM)}</b></div>`
-      + `<div><span>Strap</span><b class="${stM && stM.value != null ? '' : 'missing'}">${deg(stM)}</b></div></div>`;
+      + `<div><span>Strap</span><b class="${stM && stM.value != null ? '' : 'missing'}">${deg(stM)}</b></div></div>`
+      + (why ? `<dd class="note">${why}</dd>` : '');
     box.appendChild(row);
   }
 }
@@ -685,6 +730,21 @@ api('/api/status').then((s) => {
   ui.side = s.side || 'right';
   document.querySelectorAll('[data-side]').forEach((x) => x.classList.toggle('on', x.dataset.side === ui.side));
   $('#model-name').textContent = `${s.pose_model || 'pose'} + depth`;
+  if (s.camera_preview) {
+    const btn = $('#video-btn');
+    btn.hidden = false;
+    vision.startPreview();
+    btn.textContent = 'Hide camera';
+    btn.addEventListener('click', () => {
+      if (vision.live) {
+        vision.stopPreview();
+        btn.textContent = 'Show camera';
+      } else {
+        vision.startPreview();
+        btn.textContent = 'Hide camera';
+      }
+    });
+  }
   if (s.debug_video) {
     const btn = $('#video-btn');
     btn.hidden = false;

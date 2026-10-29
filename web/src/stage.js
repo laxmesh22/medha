@@ -44,19 +44,19 @@ export class Stage {
     key.shadow.camera.left = key.shadow.camera.bottom = -1.5;
     key.shadow.camera.right = key.shadow.camera.top = 1.5;
     this.scene.add(key);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.6));
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0xdcebe8, 0.55));
 
     this.floor = new THREE.Mesh(
       new THREE.PlaneGeometry(20, 20).rotateX(-Math.PI / 2),
-      new THREE.ShadowMaterial({ opacity: 0.25 }),
+      new THREE.ShadowMaterial({ opacity: 0.18 }),
     );
     this.floor.receiveShadow = true;
     this.floor.position.y = -1.45;
     this.scene.add(this.floor);
 
-    this.grid = new THREE.GridHelper(6, 24, 0x3a4a5c, 0x243140);
+    this.grid = new THREE.GridHelper(6, 24, 0x2b7a73, 0xdcebe8);
     this.grid.material.transparent = true;
-    this.grid.material.opacity = 0.5;
+    this.grid.material.opacity = 0.95;
     this.grid.position.y = -1.449;
     this.scene.add(this.grid);
 

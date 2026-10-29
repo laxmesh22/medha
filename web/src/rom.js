@@ -19,17 +19,17 @@ export class RomOverlay {
     const idx = [];
     for (let i = 1; i <= SEG; i++) idx.push(0, i, i + 1);
     fanGeo.setIndex(idx);
-    this.fanMat = new THREE.MeshBasicMaterial({ color: 0x16a34a, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false });
+    this.fanMat = new THREE.MeshBasicMaterial({ color: 0x0a4a4f, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false });
     this.fan = new THREE.Mesh(fanGeo, this.fanMat);
     this.fan.renderOrder = 5;
 
     this.edgePos = new Float32Array((SEG + 1) * 3);
     const edgeGeo = new THREE.BufferGeometry();
     edgeGeo.setAttribute('position', new THREE.BufferAttribute(this.edgePos, 3));
-    this.edgeMat = new THREE.LineBasicMaterial({ color: 0x16a34a });
+    this.edgeMat = new THREE.LineBasicMaterial({ color: 0x0a4a4f });
     this.edge = new THREE.Line(edgeGeo, this.edgeMat);
 
-    this.ghostMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false, emissive: 0x4fc6a6, emissiveIntensity: 0 });
+    this.ghostMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false, emissive: 0x2b7a73, emissiveIntensity: 0 });
     this.ghost = new THREE.Mesh(new THREE.CapsuleGeometry(0.035, 0.5, 4, 12), this.ghostMat);
 
     this.labelEl = document.createElement('div');

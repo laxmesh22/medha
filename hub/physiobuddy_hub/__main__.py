@@ -6,6 +6,7 @@
     python -m physiobuddy_hub run --bag session.bag      # replay a recording through the full pipeline
     python -m physiobuddy_hub run --sim                  # synthetic patient, no camera (UI development)
     python -m physiobuddy_hub run --sim --straps auto    # also ingest AURI-ARM / AURI-TRUNK over BLE
+    python -m physiobuddy_hub run --webcam 0             # laptop webcam via the AURI-CV engine
 """
 
 from __future__ import annotations
@@ -38,15 +39,32 @@ def _cmd_fetch_models(args) -> None:
     print("models cached under hub/models/rtmlib")
 
 
-def _strap_link(spec: str):
+def _strap_slots(spec: str) -> dict:
+    """``ADDR=upper_arm,ADDR=forearm``. Empty when the pod's own sensor id is already the slot."""
+    from .straps.link import SLOT_IDS
+
+    slots = {}
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        addr, sep, slot = part.partition("=")
+        slot = slot.strip()
+        if not sep or slot not in SLOT_IDS:
+            raise SystemExit(f"--strap-slot needs ADDR=upper_arm|forearm|trunk, not {part!r}")
+        slots[addr.strip().upper()] = slot
+    return slots
+
+
+def _strap_link(spec: str, slots: dict | None = None):
     """``off`` (default) imports nothing from bleak. ``auto`` scans. Otherwise one or more BLE addresses."""
     if spec == "off":
         return None
     from .straps.link import StrapLink
 
     if spec == "auto":
-        return StrapLink()
-    return StrapLink([part.strip() for part in spec.split(",") if part.strip()])
+        return StrapLink(slots=slots)
+    return StrapLink([part.strip() for part in spec.split(",") if part.strip()], slots=slots)
 
 
 def _cmd_run(args) -> None:
@@ -58,7 +76,15 @@ def _cmd_run(args) -> None:
     from .capture.realsense import DEFAULT_UP, RealSenseSource, measure_up_vector
     from .pipeline import CameraPipeline
 
-    if args.bag or args.sim:
+    if args.webcam is not None:
+        from .capture.auri_cv import WORLD_UP
+
+        up, up_info = WORLD_UP.copy(), {
+            "source": "mediapipe_world_up",
+            "tilt_deg": None,
+            "note": "MediaPipe world Y is down. This is not a measured gravity vector.",
+        }
+    elif args.bag or args.sim:
         up, up_info = DEFAULT_UP.copy(), {"source": "assumed_level (replay/sim)", "tilt_deg": None}
     else:
         up, up_info = measure_up_vector(args.serial)
@@ -71,7 +97,21 @@ def _cmd_run(args) -> None:
     if record:
         Path(record).parent.mkdir(parents=True, exist_ok=True)
 
-    if args.sim:
+    if args.webcam is not None:
+        from .capture.auri_cv import WebcamSource
+
+        preview = args.camera_preview != "off"
+        source = WebcamSource(camera=args.webcam, side=args.side, preview=preview)
+        source.start()
+
+        class _UnusedPose:
+            name = "auri_cv"
+
+            def __call__(self, _bgr):
+                raise RuntimeError("webcam frames are not depth-lifted")
+
+        pose = _UnusedPose()
+    elif args.sim:
         from .sim import SimPose, SimSource
 
         source = SimSource()
@@ -94,7 +134,7 @@ def _cmd_run(args) -> None:
         source, pose, up_cam=np.asarray(up), side=args.side, min_score=args.min_score,
         log_dir=log_dir, debug_video=args.debug_video,
         meta={"session": session_id, "pose_model": pose.name, "side": args.side},
-        motionnet=motionnet, straps=_strap_link(args.straps),
+        motionnet=motionnet, straps=_strap_link(args.straps, _strap_slots(args.strap_slot)),
     )
     if args.dataset_dir:
         from .recorder import DatasetRecorder
@@ -128,17 +168,24 @@ def main(argv=None) -> None:
     r.add_argument("--device", default="cpu", help="cpu | cuda (Jetson / NVIDIA GPU)")
     r.add_argument("--min-score", type=float, default=0.4, help="keypoint confidence threshold")
     r.add_argument("--serial", default=None, help="RealSense serial (if several cameras)")
-    r.add_argument("--bag", default=None, help="replay a .bag recording instead of the live camera")
-    r.add_argument("--sim", action="store_true", help="synthetic patient, no camera needed (UI development)")
+    picture = r.add_mutually_exclusive_group()
+    picture.add_argument("--bag", default=None, help="replay a .bag recording instead of the live camera")
+    picture.add_argument("--sim", action="store_true", help="synthetic patient, no camera needed (UI development)")
+    picture.add_argument("--webcam", nargs="?", const=0, type=int,
+                         help="laptop webcam index (default 0) via the external AURI-CV engine")
     r.add_argument("--record", default=None, help="record raw streams to this .bag ('auto' = data/recordings)")
     r.add_argument("--log", action="store_true", help="write per-frame keypoints + angles to data/sessions")
     r.add_argument("--debug-video", action="store_true", help="serve annotated video at /debug/stream.mjpg")
+    r.add_argument("--camera-preview", choices=["on", "off"], default="on",
+                   help="webcam only: live image under the skeleton (default on). Off is keypoints only")
     r.add_argument("--dataset-dir", default=None,
                    help="enable guided recording into this folder (off if omitted)")
     r.add_argument("--motionnet", default=None,
                    help="PB-MotionNet model dir (default hub/models/motionnet; 'off' = rules only)")
     r.add_argument("--straps", default="off",
                    help="off | auto | BLE address[,address]. Default off, so --sim and CI do not open BLE")
+    r.add_argument("--strap-slot", default="",
+                   help="ADDR=upper_arm|forearm|trunk, repeated with commas. Two unit-1 pods both emit sensor 0")
     r.add_argument("--host", default="0.0.0.0")
     r.add_argument("--port", type=int, default=8000)
 

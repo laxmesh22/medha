@@ -47,13 +47,32 @@ Check first. This machine had no camera when the list was last run (it printed `
 hub\.venv\Scripts\python.exe -m physiobuddy_hub devices
 ```
 
-An empty list means there is no camera: stay on `--sim`. If a camera is listed, the same command prints a gravity check. Then stop any sim station and start:
+An empty list means there is no RealSense. Use the laptop webcam next, then `--sim`. If a camera is listed, the same command prints a gravity check. Then stop any sim station and start:
 
 ```
 hub\.venv\Scripts\python.exe -m physiobuddy_hub run --motionnet off
 ```
 
 In the log, the `gravity:` line should be a measured direction, not `assumed_level (replay/sim)`. Ask the person to stand about 2 to 2.5 m from the camera, whole body in frame. The page says to step closer or step back when they are outside 1.6–3.0 m.
+
+## If there is no RealSense
+
+The laptop webcam is the next fallback. It uses the teammate's AURI-CV engine, which is not part of this repo. Once, from the repo root:
+
+```
+git clone https://github.com/abdulmueez3-14/AURIII external/AURIII
+git -C external/AURIII checkout 0011377
+uv venv external/AURIII/.venv --python 3.12
+uv pip install --native-tls -r external/AURIII/requirements.txt
+```
+
+Then:
+
+```
+hub\.venv\Scripts\python.exe -m physiobuddy_hub run --webcam 0 --motionnet off
+```
+
+The page shows the hub's own angles and, beside them, a Webcam engine card with the other engine's numbers. The coach still counts from the hub's skeleton. Degrees are still geometry. An empty room should say the measurement is unavailable.
 
 ## Five minutes with a visitor
 
@@ -84,9 +103,10 @@ The synthetic patient moves on its own, in a loop of about 36 seconds: forward r
 
 Stop the station with Ctrl+C in its window before starting another. Do not pass `--dataset-dir`.
 
-1. Camera, only if `devices` lists one: `hub\.venv\Scripts\python.exe -m physiobuddy_hub run --motionnet off` then http://localhost:8000
-2. No camera, or the page stays on “Step into the camera view”: `hub\.venv\Scripts\python.exe -m physiobuddy_hub run --sim --motionnet off` then http://localhost:8000
-3. The page will not load: play `hardware/renders/physio_buddy_film_v2.mp4`, then `hardware/renders/auri_dashboard_intro.mp4`
+1. RealSense, only if `devices` lists one: `hub\.venv\Scripts\python.exe -m physiobuddy_hub run --motionnet off` then http://localhost:8000
+2. No RealSense: `hub\.venv\Scripts\python.exe -m physiobuddy_hub run --webcam 0 --motionnet off` then http://localhost:8000
+3. Webcam missing or the page stays on “Step into the camera view”: `hub\.venv\Scripts\python.exe -m physiobuddy_hub run --sim --motionnet off` then http://localhost:8000
+4. The page will not load: play `hardware/renders/physio_buddy_film_v2.mp4`, then `hardware/renders/auri_dashboard_intro.mp4`
 
 Dashboard: the demo in step 4 runs offline. Without `$env:VITE_FORCE_DEMO = '1'` the local app uses the live
 database (this laptop's `clinician/.env.local`) and needs the network.

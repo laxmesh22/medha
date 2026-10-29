@@ -324,6 +324,23 @@ class CameraPipeline:
         with self._lock:
             return self._jpeg
 
+    def latest_preview(self) -> Optional[bytes]:
+        """Webcam preview JPEG. Separate from measurements and never recorded."""
+        fn = getattr(self.source, "latest_preview", None)
+        return None if fn is None else fn()
+
+    def wait_preview(self, after: int, timeout: float):
+        """Newest preview JPEG newer than ``after``. Not a measurement."""
+        fn = getattr(self.source, "wait_preview", None)
+        return None if fn is None else fn(after, timeout)
+
+    def preview_for_frame(self, frame):
+        """Preview JPEG for this frame id only. Missing stays None, never a neighbour frame."""
+        fn = getattr(self.source, "preview_for_frame", None)
+        if fn is None or frame is None:
+            return None
+        return fn(frame)
+
     # -- loop ------------------------------------------------------------------------------
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -337,12 +354,18 @@ class CameraPipeline:
 
     def _process(self, frame: CameraFrame) -> None:
         t0 = time.perf_counter()
-        pose2d = self.pose(frame.color)
-        sk = None
-        if pose2d is not None:
-            deproject = getattr(self.source, "deproject", None)
-            sk = lift_pose(pose2d, frame.depth_m, frame.intrinsics, deproject=deproject,
-                           min_score=self.min_score)
+        # A webcam frame already carries a Skeleton3D from MediaPipe world landmarks.
+        # Depth-lifting those pixels would invent a camera the webcam does not have.
+        posed = getattr(self.source, "posed_skeleton", None)
+        if posed is not None:
+            pose2d, sk = posed()
+        else:
+            pose2d = self.pose(frame.color)
+            sk = None
+            if pose2d is not None:
+                deproject = getattr(self.source, "deproject", None)
+                sk = lift_pose(pose2d, frame.depth_m, frame.intrinsics, deproject=deproject,
+                               min_score=self.min_score)
         with self._lock:
             kin, segments, side = self.kin, self.segments, self.side
         angles = None
@@ -364,7 +387,9 @@ class CameraPipeline:
         self._sync_strap_cal()
         strap_angles, imu_block = (None, None)
         if self.straps is not None and self.strap_cal is not None:
-            strap_angles, imu_block = strap_frame(self.strap_cal, self.straps.snapshot())
+            # frame_view does not wait if a strap callback holds the lock. snapshot() would.
+            view = self.straps.frame_view() if hasattr(self.straps, "frame_view") else self.straps.snapshot()
+            strap_angles, imu_block = strap_frame(self.strap_cal, view)
         with self._lock:
             t_s = frame.timestamp_ms / 1000.0
             nn_out = None if self.nn is None else self.nn.push(sk, angles_d, side, self.up_cam,
@@ -416,6 +441,9 @@ class CameraPipeline:
                 for u, v in pose2d.keypoints_px],
             "image_aspect": round(frame.intrinsics.width / frame.intrinsics.height, 4),
         }
+        engine = getattr(self.source, "engine_view", None)
+        if engine is not None:
+            state["auri_cv"] = engine()
         straps = self.strap_status()
         if straps is not None:
             straps["angles"] = strap_angles

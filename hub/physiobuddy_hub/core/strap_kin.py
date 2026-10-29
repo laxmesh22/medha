@@ -236,8 +236,11 @@ class StrapKinematics:
                 plane = Measurement(float(np.degrees(np.arctan2(u[2], u[0]))), q_arm)
                 movement = _name_movement(plane.value)
 
-        elbow = rot = na("forearm strap missing")
-        if u is not None and Qf is not None:
+        if Qf is None:
+            elbow = rot = na("forearm strap missing")
+        elif u is None:
+            elbow = rot = na("upper-arm or waist strap missing")
+        else:
             f = Qt.T @ Qf @ DOWN
             f[2] *= self.z_sign
             elbow = Measurement(_angle_deg(u, f), q_arm)

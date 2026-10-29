@@ -4,7 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Auri clinic station: live shoulder range-of-motion measurement and exercise coaching." />
-    <meta name="theme-color" content="#0b0f14" />
+    <meta name="theme-color" content="#f5f2ea" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@500&display=swap" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Auri Station</title>
   </head>
@@ -14,8 +16,8 @@
 
     <header class="top">
       <div class="brand">
-        <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#f5f2ea"/><g stroke="#0a4a4f" stroke-linecap="round" fill="none"><path d="M30.3 20.2 L19.5 50 M33.7 20.2 L44.5 50" stroke-width="4.2"/><circle cx="32" cy="15" r="4.6" stroke-width="3.8"/><path d="M24.6 36.6 Q32 39.6 39.6 35.6" stroke-width="2.6"/><path d="M26.6 40.4 L26.1 42.4 M29.2 41.2 L29 43.3 M31.8 41.5 L31.8 43.6 M34.4 41.2 L34.7 43.3 M37 40.4 L37.6 42.3" stroke-width="1.5"/></g><circle cx="39.6" cy="35.6" r="2.6" fill="#0a4a4f"/></svg>
-        <div><strong>Auri</strong><span>Clinic station</span></div>
+        <svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#0a4a4f"/><g stroke="#f5f2ea" stroke-linecap="round" fill="none"><path d="M30.3 20.2 L19.5 50 M33.7 20.2 L44.5 50" stroke-width="4.2"/><circle cx="32" cy="15" r="4.6" stroke-width="3.8"/><path d="M24.6 36.6 Q32 39.6 39.6 35.6" stroke-width="2.6"/><path d="M26.6 40.4 L26.1 42.4 M29.2 41.2 L29 43.3 M31.8 41.5 L31.8 43.6 M34.4 41.2 L34.7 43.3 M37 40.4 L37.6 42.3" stroke-width="1.5"/></g><circle cx="39.6" cy="35.6" r="2.6" fill="#f5f2ea"/></svg>
+        <div><strong class="wordmark">Auri</strong><span>Clinic station</span></div>
       </div>
 
       <nav class="session" aria-label="Session">
@@ -28,18 +30,23 @@
           <button data-side="right" class="on">Right</button>
           <button data-side="left">Left</button>
         </div>
-        <label class="field">Patient
-          <select id="model">
-            <option value="female">Female</option>
-            <option value="male">Male</option>
-            <option value="mannequin">Mannequin</option>
-          </select>
-        </label>
-        <button id="rest-btn" class="btn-quiet">Calibrate rest</button>
-        <button id="auto-btn" class="btn-quiet" aria-pressed="false" hidden>Auto-detect</button>
         <button id="pain-btn" class="btn-quiet">Pain check</button>
         <button id="end-btn" class="btn-quiet">End session</button>
-        <button id="rec-btn" class="btn-quiet" aria-expanded="false" aria-controls="rec-drawer">Record dataset</button>
+        <details class="setup">
+          <summary>Setup</summary>
+          <div class="setup-panel">
+            <label class="field">Patient
+              <select id="model">
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="mannequin">Mannequin</option>
+              </select>
+            </label>
+            <button id="rest-btn" class="btn-quiet">Calibrate rest</button>
+            <button id="auto-btn" class="btn-quiet" aria-pressed="false" hidden>Auto-detect</button>
+            <button id="rec-btn" class="btn-quiet" aria-expanded="false" aria-controls="rec-drawer">Record dataset</button>
+          </div>
+        </details>
       </nav>
 
       <div class="status" role="status">
@@ -109,31 +116,49 @@
             </div>
           </header>
           <ul id="transcript" class="transcript"></ul>
-          <div class="asks" aria-label="Try asking">
-            <button data-ask="how am I doing">How am I doing?</button>
-            <button data-ask="how many reps">Reps?</button>
-            <button data-ask="what muscles are working">Muscles?</button>
-            <button data-ask="next exercise">Next exercise</button>
-          </div>
+          <details class="asks-fold">
+            <summary>Ask the coach</summary>
+            <div class="asks" aria-label="Try asking">
+              <button data-ask="how am I doing">How am I doing?</button>
+              <button data-ask="how many reps">Reps?</button>
+              <button data-ask="what muscles are working">Muscles?</button>
+              <button data-ask="next exercise">Next exercise</button>
+            </div>
+          </details>
         </section>
 
-        <section class="vision" aria-label="What the camera model sees">
-          <header><h3>Vision</h3><span id="model-name">pose model</span><button id="video-btn" class="btn-quiet" hidden>Show video</button></header>
-          <div class="vision-wrap"><img id="video" alt="Live camera image with tracked skeleton" hidden /><canvas id="vision"></canvas></div>
-        </section>
-
-        <section id="straps-card" class="metrics" hidden aria-label="Straps">
-          <header><h3>Straps</h3><span id="straps-link"></span></header>
-          <p id="straps-cal" class="rec-note"></p>
-          <div class="rec-btns">
-            <button type="button" id="straps-npose" class="btn-quiet">Calibrate: stand still (N-pose)</button>
-            <button type="button" id="straps-raise" class="btn-quiet">Calibrate: forward raise</button>
+        <details class="vision fold">
+          <summary><h3>Camera</h3><span id="model-name">pose model</span></summary>
+          <div class="fold-body">
+            <button id="video-btn" class="btn-quiet" hidden>Show video</button>
+            <div class="vision-wrap"><img id="video" alt="Live camera image with tracked skeleton" hidden /><canvas id="vision"></canvas></div>
           </div>
-          <p id="straps-msg" class="rec-note" hidden></p>
-          <dl id="straps-compare"></dl>
-        </section>
+        </details>
+
+        <details id="webcam-card" class="metrics fold" hidden>
+          <summary><h3>Webcam engine</h3><span id="webcam-status"></span></summary>
+          <div class="fold-body">
+            <p id="webcam-extra" class="rec-note"></p>
+            <dl id="webcam-compare"></dl>
+          </div>
+        </details>
+
+        <details id="straps-card" class="metrics fold" hidden>
+          <summary><h3>Straps</h3><span id="straps-link"></span></summary>
+          <div class="fold-body">
+            <p id="straps-cal" class="rec-note"></p>
+            <div class="rec-btns">
+              <button type="button" id="straps-npose" class="btn-quiet">Calibrate: stand still (N-pose)</button>
+              <button type="button" id="straps-raise" class="btn-quiet">Calibrate: forward raise</button>
+            </div>
+            <p id="straps-msg" class="rec-note" hidden></p>
+            <dl id="straps-compare"></dl>
+          </div>
+        </details>
       </aside>
 
+      <details class="lower-fold">
+        <summary>Chart and measurements</summary>
       <section class="lower" aria-label="Session data">
         <div class="chart-box">
           <header><h3>Angle over time</h3><span id="best"></span></header>
@@ -154,6 +179,7 @@
           <p class="disclaimer">Prototype. Not a medical device. Values are engineering estimates; exercise limits are set by a physiotherapist.</p>
         </div>
       </section>
+      </details>
     </main>
 
     <aside id="rec-drawer" class="rec-drawer" aria-label="Dataset recording" hidden>

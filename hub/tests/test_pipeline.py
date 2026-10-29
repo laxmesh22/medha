@@ -1,4 +1,5 @@
 import threading
+import time
 
 import numpy as np
 import pytest
@@ -161,6 +162,36 @@ def test_recording_accepted_with_dataset_dir(pipeline, tmp_path):
     assert client.post("/api/record/stop").status_code == 200
     after = set(DEFAULT_ROOT.iterdir()) if DEFAULT_ROOT.exists() else None
     assert before == after
+
+
+def test_stuck_strap_link_does_not_delay_pipeline_frames():
+    """A strap callback that holds the link lock must not stall the camera frames."""
+    from physiobuddy_hub.core.strap_kin import StrapCalibration
+    from physiobuddy_hub.straps.link import StrapLink
+
+    link = StrapLink(["AA:BB:CC:DD:EE:01"])
+    link._published = {"upper_arm": {"available": False}}
+    pipeline = CameraPipeline(FakeSource(), FakePose(), up_cam=DEFAULT_UP, side="right", straps=link)
+    pipeline.strap_cal = StrapCalibration.from_npose("right", {"upper_arm": [(1.0, 0.0, 0.0, 0.0)]})
+    pipeline._process(pipeline.source.latest())  # import and first-frame cost, before the lock is held
+    held = threading.Event()
+
+    def hold():
+        link._lock.acquire()
+        held.set()
+        time.sleep(1.2)
+        link._lock.release()
+
+    blocker = threading.Thread(target=hold)
+    blocker.start()
+    assert held.wait(2.0)
+    t0 = time.perf_counter()
+    for _ in range(8):
+        pipeline._process(pipeline.source.latest())
+    elapsed = time.perf_counter() - t0
+    blocker.join()
+    assert elapsed < 0.4, elapsed
+    assert pipeline.latest_state()[0] == 9
 
 
 def test_rest_calibration_sets_shrug_baseline(pipeline):

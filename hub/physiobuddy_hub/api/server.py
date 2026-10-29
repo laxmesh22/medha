@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -60,6 +60,7 @@ def create_app(pipeline, status: dict) -> FastAPI:
             "frames_processed": version,
             "fps": state["fps"] if state else 0.0,
             "debug_video": pipeline.debug_video,
+            "camera_preview": bool(getattr(pipeline.source, "preview", False)),
         }
         straps = pipeline.strap_status()
         if straps is not None:
@@ -133,6 +134,14 @@ def create_app(pipeline, status: dict) -> FastAPI:
     def record_status():
         return pipeline.record_status()
 
+    @app.post("/api/straps/reconnect")
+    def strap_reconnect():
+        """Drop the BLE sessions so they reconnect. Does not touch the camera thread."""
+        if pipeline.straps is None:
+            return JSONResponse({"ok": False, "reason": "straps are off"}, status_code=409)
+        pipeline.straps.request_reconnect()
+        return {"ok": True}
+
     @app.get("/api/straps/calibration")
     def strap_calibration():
         if pipeline.straps is None:
@@ -168,9 +177,46 @@ def create_app(pipeline, status: dict) -> FastAPI:
                 if state is not None and version != last:
                     await ws.send_json(state)
                     last = version
-                await asyncio.sleep(1.0 / WS_MAX_HZ)
+                else:
+                    await asyncio.sleep(1.0 / WS_MAX_HZ)
         except (WebSocketDisconnect, RuntimeError):
             return
+
+    @app.get("/api/camera/preview.jpg")
+    async def camera_preview_jpg(after: int = -1):
+        """One JPEG for the frame the skeleton was measured on. Not recorded.
+
+        The browser pulls the newest frame and drops anything older, so a slow
+        decode cannot build a queue the way a multipart MJPEG stream does."""
+        if not getattr(pipeline.source, "preview", False):
+            return JSONResponse({"ok": False, "reason": "camera preview is off"}, status_code=404)
+        meta = await asyncio.to_thread(pipeline.wait_preview, after, 1.0)
+        if not meta or not meta.get("jpeg"):
+            return Response(status_code=204)
+        headers = {
+            "X-Auri-Frame": str(meta["frame"]),
+            "Cache-Control": "no-store",
+        }
+        if meta.get("t_ms") is not None:
+            headers["X-Auri-Time"] = str(meta["t_ms"])
+        return Response(content=meta["jpeg"], media_type="image/jpeg", headers=headers)
+
+    @app.get("/api/camera/preview.mjpg")
+    async def camera_preview():
+        """Downscaled webcam JPEG. Not recorded, and not used for angles."""
+        if not getattr(pipeline.source, "preview", False):
+            return JSONResponse({"ok": False, "reason": "camera preview is off"}, status_code=404)
+
+        async def gen():
+            last = None
+            while True:
+                jpeg = pipeline.latest_preview()
+                if jpeg is not None and jpeg is not last:
+                    last = jpeg
+                    yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n"
+                await asyncio.sleep(0.1)
+
+        return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame")
 
     @app.get("/debug/stream.mjpg")
     async def debug_stream():
