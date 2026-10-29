@@ -30,6 +30,7 @@ struct Imu {
   bool resetFlag = false;  // sticky until the next packet of this sensor
   uint16_t seq = 0;
   uint32_t lastSampleMs = 0, lastSilentPacketMs = 0, lastRecoverMs = 0;
+  uint8_t recoverTries = 0;
   float q[4] = {1, 0, 0, 0};  // w, x, y, z (last good)
   uint8_t accuracy = 0;
   float gyro[3] = {0, 0, 0}, grav[3] = {0, 0, 0};
@@ -100,31 +101,52 @@ static void detectImus() {
     if (!imus[i].present) startImu(imus[i]);
 }
 
+// Non-blocking: send a soft reset and return. pollImu() keeps reporting the sensor as silent (valid = 0 at 5 Hz)
+// until the sensor says it is back (takeReset), then re-enables its reports. After 3 failed tries, and only when
+// RST is wired, pulse the shared reset line (this restarts every IMU on the pod).
 static void recoverImu(Imu& m) {
   m.lastRecoverMs = millis();
-  Serial.printf("imu sensor %u silent: recovering\n", m.slot.sensorId);
-  if (!startImu(m)) {  // soft reset first; the shared RST line only if that fails
-    if (AURI_BNO_RST_WIRED) {
-      hardResetImus();
-      for (size_t i = 0; i < IMU_COUNT; i++)
-        if (&imus[i] != &m && imus[i].present) imus[i].dev.takeReset(), enableReports(imus[i]);
-    }
-    if (!startImu(m)) m.present = false;  // detectImus() keeps looking for it
-  }
   m.resetFlag = true;
+  if (!i2cAck(m.slot.address)) {  // gone from the bus: detectImus() will look for it
+    Serial.printf("imu sensor %u not on the bus\n", m.slot.sensorId);
+    m.present = false;
+    m.recoverTries = 0;
+    return;
+  }
+  m.recoverTries++;
+  Serial.printf("imu sensor %u silent: soft reset (try %u)\n", m.slot.sensorId, m.recoverTries);
+  if (m.recoverTries > 3 && AURI_BNO_RST_WIRED) {
+    hardResetImus();  // every sensor on the pod reboots and announces it; pollImu re-enables each
+    m.recoverTries = 0;
+    return;
+  }
+  m.dev.resetAsync();
 }
 
+static uint16_t notifyDrops = 0;
+static uint16_t attPayload = 20;  // negotiated ATT MTU - 3; 20 until the client asks for more
+
+static void notifyOrCount(NimBLECharacteristic* ch, const uint8_t* data, size_t len) {
+  ch->setValue(data, len);
+  if (!ch->notify() && notifyDrops < 0xFFFF) notifyDrops++;
+}
+
+// One packet per sensor sample. With a large enough MTU, orientation and the matching gyro + gravity record go out
+// together in one 37-byte IMU_DATA notification (protocol v2); otherwise as two notifications (17 + 20 bytes).
 static void sendImuPacket(Imu& m, bool valid) {
   uint8_t flags = (valid ? F_VALID : 0) | accuracyBits(m.accuracy) | (m.resetFlag ? F_RESET : 0);
   if (valid && m.accuracy >= 2) flags |= F_CALIB_OK;
-  uint8_t buf[IMU_PACKET_LEN];
-  packImu(buf, AURI_UNIT, m.slot.sensorId, flags, m.seq, millis(), m.q[0], m.q[1], m.q[2], m.q[3]);
-  chImu->setValue(buf, sizeof(buf));
-  chImu->notify();
-  uint8_t raw[RAW_PACKET_LEN];
-  packRaw(raw, AURI_UNIT, m.slot.sensorId, valid && m.gyroOk, valid && m.gravOk, m.seq, millis(), m.gyro, m.grav);
-  chRaw->setValue(raw, sizeof(raw));
-  chRaw->notify();
+  uint32_t t = millis();
+  uint8_t buf[IMU_PACKET_LEN + RAW_PACKET_LEN];
+  packImu(buf, AURI_UNIT, m.slot.sensorId, flags, m.seq, t, m.q[0], m.q[1], m.q[2], m.q[3]);
+  packRaw(buf + IMU_PACKET_LEN, AURI_UNIT, m.slot.sensorId, valid && m.gyroOk, valid && m.gravOk, m.seq, t, m.gyro,
+          m.grav);
+  if (attPayload >= sizeof(buf)) {
+    notifyOrCount(chImu, buf, sizeof(buf));
+  } else {
+    notifyOrCount(chImu, buf, IMU_PACKET_LEN);
+    notifyOrCount(chRaw, buf + IMU_PACKET_LEN, RAW_PACKET_LEN);
+  }
   m.seq++;
   m.resetFlag = false;
 }
@@ -134,9 +156,10 @@ static void pollImu(Imu& m) {
   if (!m.present) return;
   uint8_t got = m.dev.poll();
   if (m.dev.takeReset()) {  // the BNO rebooted on its own: reports are gone, re-enable them
-    Serial.printf("imu sensor %u reset itself: re-enabling reports\n", m.slot.sensorId);
+    Serial.printf("imu sensor %u reset (by us or by itself): re-enabling reports\n", m.slot.sensorId);
     enableReports(m);
     m.resetFlag = true;
+    m.recoverTries = 0;
   }
   // gyro and gravity first, so the packet sent for this rotation sample carries the newest of both
   if (got & BnoLite::NEW_GYRO) {
@@ -197,6 +220,7 @@ static void sendStatus() {
   s.streaming = streamOn;
   s.rateHz = rateHz;
   s.haptics = hapticsPresent;
+  s.notifyDrops = notifyDrops > 0xFF ? 0xFF : (uint8_t)notifyDrops;
   uint8_t buf[STATUS_LEN];
   packStatus(buf, s);
   chStatus->setValue(buf, sizeof(buf));
@@ -232,11 +256,20 @@ static void playHaptic(uint8_t pattern) {
 class ServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, NimBLEConnInfo& info) override {
     connected = true;
+    // Windows exchanges the MTU before this callback runs, so onMTUChange may already have fired: read the current
+    // value instead of resetting it (resetting to 20 kept the 37-byte path off in test 017).
+    attPayload = info.getMTU() > 3 ? info.getMTU() - 3 : 20;
     s->updateConnParams(info.getConnHandle(), 6, 12, 0, 400);  // 7.5-15 ms interval for 100-200 notifies/s
     Serial.printf("ble connected %s\n", info.getAddress().toString().c_str());
   }
+  void onMTUChange(uint16_t mtu, NimBLEConnInfo&) override {
+    attPayload = mtu > 3 ? mtu - 3 : 20;
+    Serial.printf("ble mtu %u: %s packets\n", mtu, attPayload >= IMU_PACKET_LEN + RAW_PACKET_LEN ? "combined 37-byte"
+                                                                                                    : "17 + 20 byte");
+  }
   void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int reason) override {
     connected = false;
+    attPayload = 20;
     Serial.printf("ble disconnected (reason %d), advertising again\n", reason);
     NimBLEDevice::startAdvertising();
   }
@@ -375,7 +408,8 @@ void loop() {
 
   for (size_t i = 0; i < IMU_COUNT; i++) pollImu(imus[i]);
 
-  if (now - lastDetectMs >= DETECT_EVERY_MS) {
+  // A BNO that is still busy after an MCU-only reset answers within ~2.5 s: look every 0.5 s for the first 5 s.
+  if (now - lastDetectMs >= (now < 5000 ? 500 : DETECT_EVERY_MS)) {
     lastDetectMs = now;
     detectImus();
   }

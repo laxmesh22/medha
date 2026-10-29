@@ -6,7 +6,7 @@
 
 namespace auri {
 
-constexpr uint8_t PROTOCOL_VERSION = 1;
+constexpr uint8_t PROTOCOL_VERSION = 2;  // v2: combined 37-byte IMU_DATA when the MTU allows, notify drops in STATUS
 
 constexpr const char* SERVICE_UUID = "3c3ff578-acd0-46f5-a868-3ef18783e0b1";
 constexpr const char* IMU_DATA_UUID = "55b3d211-8c74-4650-9156-6b55c5d4384a";
@@ -35,6 +35,7 @@ constexpr size_t IMU_PACKET_LEN = 17;
 constexpr size_t RAW_PACKET_LEN = 20;
 constexpr size_t STATUS_LEN = 16;
 constexpr size_t PONG_LEN = 13;
+constexpr size_t COMBINED_LEN = IMU_PACKET_LEN + RAW_PACKET_LEN;  // v2, MTU >= 40
 
 // IMU_DATA flags
 constexpr uint8_t F_VALID = 0x01;
@@ -91,6 +92,7 @@ struct StatusRecord {
   bool streaming;
   uint8_t rateHz;
   bool haptics;
+  uint8_t notifyDrops;  // notifications that could not be queued since boot, saturating
 };
 
 inline void packStatus(uint8_t out[STATUS_LEN], const StatusRecord& s) {
@@ -107,7 +109,7 @@ inline void packStatus(uint8_t out[STATUS_LEN], const StatusRecord& s) {
   out[12] = s.streaming ? 1 : 0;
   out[13] = s.rateHz;
   out[14] = s.haptics ? 1 : 0;
-  out[15] = 0;
+  out[15] = s.notifyDrops;
 }
 
 inline void packPong(uint8_t out[PONG_LEN], uint64_t hostUs, uint32_t tMs) {

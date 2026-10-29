@@ -1,10 +1,11 @@
-# Auri strap BLE protocol v1
+# Auri strap BLE protocol v2
 
 Fixed contract between the strap firmware (`firmware/auri_strap/`) and the hub. The C header
 (`../auri_strap/src/auri_ble.h`) and the Python decoder (`auri_ble.py`) implement exactly this page; change all three together and bump
-`PROTOCOL_VERSION`. Based on `agenthandoff.md` §7, with the time-sync ping from `jetson_realsense_ai_design.md`.
+`PROTOCOL_VERSION`. v1 → v2: combined 37-byte IMU_DATA, notify-drop counter in STATUS. Based on `agenthandoff.md` §7, with the time-sync ping from `jetson_realsense_ai_design.md`.
 
-All multi-byte fields are **little-endian**. Every packet fits the default 20-byte ATT payload (no MTU negotiation).
+All multi-byte fields are **little-endian**. Every v1 packet fits the default 20-byte ATT payload, so a client that
+does not negotiate the MTU still gets everything; the 37-byte combined packet is used only after a larger MTU.
 
 ## Devices
 | Unit | `unit_id` | BLE name | Sensors (`sensor_id`) |
@@ -17,8 +18,8 @@ Service `3c3ff578-acd0-46f5-a868-3ef18783e0b1`, plus the standard Battery Servic
 
 | Characteristic | UUID | Props | Content |
 |---|---|---|---|
-| IMU_DATA | `55b3d211-8c74-4650-9156-6b55c5d4384a` | notify | 17-byte orientation packet per sensor sample |
-| RAW_DATA | `eaa61235-25bd-4c94-acef-04fde856d914` | notify | 20-byte gyro + gravity packet per sensor sample |
+| IMU_DATA | `55b3d211-8c74-4650-9156-6b55c5d4384a` | notify | 17-byte orientation packet per sensor sample, or 37 bytes (orientation + RAW_DATA record) when the MTU allows |
+| RAW_DATA | `eaa61235-25bd-4c94-acef-04fde856d914` | notify | 20-byte gyro + gravity packet per sensor sample (only when IMU_DATA is 17 bytes) |
 | COMMAND | `98d96b03-6a94-49f4-8044-9659ea5c31bb` | write | opcode + arguments |
 | STATUS | `25fc04e0-6984-40dd-a21c-f6d007e20fcd` | read, notify | status record, or a time-sync pong |
 
@@ -37,6 +38,13 @@ not be used. The firmware never fabricates samples.
 
 `sensor_id = 15` is a **link test** (firmware built with `AURI_TEST_PATTERN=1` and no IMU present): always `valid = 0`,
 identity quaternion. Receivers must ignore it except for link statistics.
+
+## Combined IMU_DATA (37 bytes, v2)
+When the negotiated ATT MTU is at least 40 (payload >= 37), each sample is **one** IMU_DATA notification: the 17-byte
+orientation packet followed by the 20-byte RAW_DATA record for the same sample, and nothing is sent on RAW_DATA.
+This halves the notification rate (200/s for two sensors at 50 Hz becomes 100/s): at 100 Hz the two-notification
+form overran the device's BLE buffers (5 % loss, then `Insufficient Resource` on the next write). With the default
+MTU (23) the device falls back to the v1 pair. Receivers must accept both lengths.
 
 ## RAW_DATA (20 bytes), same `seq`/`t_ms` as the matching IMU_DATA packet
 | Offset | Size | Field |
@@ -73,7 +81,7 @@ Status record (16 bytes), notified every 2 s and on change:
 | 12 | 1 | streaming on/off |
 | 13 | 1 | rate Hz |
 | 14 | 1 | haptics present |
-| 15 | 1 | reserved |
+| 15 | 1 | notifications the device could not queue since boot, saturating at 255 (v2; 0 in v1) |
 
 Time pong (13 bytes): type = 0x06, `host_us` uint64 echoed, `t_ms` uint32 at reception. The hub tracks
 `offset = host_rx_time - t_ms` (lower envelope) and uses the pong round trip to bound it.

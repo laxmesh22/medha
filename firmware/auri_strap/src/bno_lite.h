@@ -16,6 +16,9 @@ class BnoLite {
 
   // Soft-resets the sensor, waits for it to come back, reads its product ID. False if it does not answer.
   bool begin(TwoWire& wire, uint8_t address);
+  // Non-blocking soft reset for recovery: returns at once; poll() sees the reset-complete message and takeReset()
+  // then returns true, at which point the caller re-enables its reports. False if the bus write failed.
+  bool resetAsync();
   // Ask for a report every intervalUs (0 disables it).
   bool enable(uint8_t reportId, uint32_t intervalUs);
   // Read everything the sensor has queued (up to maxPackets); returns NEW_* bits for what arrived.
@@ -52,5 +55,13 @@ class BnoLite {
   int receive(uint8_t& channel);
   uint8_t handle(uint8_t channel, int len);
   uint8_t parseReports(int len);
-  void error() { if (i2cErrors < 0xFFFF) i2cErrors++; }
+  // For BOOT_MS after a reset the sensor does not answer I2C while it reboots: those NACKs are expected, not errors
+  // (they were all 10 "errors" seen at boot on the bench, 2026-10-29).
+  static const uint32_t BOOT_MS = 400;
+  uint32_t bootUntil_ = 0;
+  void startBootWindow() { bootUntil_ = millis() + BOOT_MS; }
+  void error() {
+    if ((int32_t)(millis() - bootUntil_) < 0) return;
+    if (i2cErrors < 0xFFFF) i2cErrors++;
+  }
 };

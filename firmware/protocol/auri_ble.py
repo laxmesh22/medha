@@ -1,4 +1,4 @@
-"""Decoder for the Auri strap BLE protocol v1 (contract: firmware/protocol/PROTOCOL.md; firmware side: firmware/auri_strap/src/auri_ble.h).
+"""Decoder for the Auri strap BLE protocol v2 (contract: firmware/protocol/PROTOCOL.md; firmware side: firmware/auri_strap/src/auri_ble.h).
 
 Pure Python, no BLE dependency, so the hub and tests can import it. Quaternions are (w, x, y, z).
 """
@@ -8,7 +8,7 @@ import struct
 from dataclasses import dataclass
 from typing import Optional
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 SERVICE_UUID = "3c3ff578-acd0-46f5-a868-3ef18783e0b1"
 IMU_DATA_UUID = "55b3d211-8c74-4650-9156-6b55c5d4384a"
@@ -57,6 +57,7 @@ class Status:
     streaming: bool
     rate_hz: int
     haptics: bool
+    notify_drops: int  # notifications the device could not queue since boot (saturates at 255)
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,14 @@ def decode_imu(data: bytes) -> ImuSample:
                      seq, t_ms, (qw / 16384, qx / 16384, qy / 16384, qz / 16384))
 
 
+def decode_imu_data(data: bytes) -> tuple[ImuSample, Optional[RawSample]]:
+    """An IMU_DATA notification: 17 bytes (orientation; the RAW_DATA record comes separately) or, in v2 when the
+    MTU allows, 37 bytes (orientation + the matching gyro/gravity record in one notification)."""
+    if len(data) == 37:
+        return decode_imu(data[:17]), decode_raw(data[17:])
+    return decode_imu(data), None
+
+
 def decode_raw(data: bytes) -> RawSample:
     if len(data) != 20:
         raise ValueError(f"RAW_DATA must be 20 bytes, got {len(data)}")
@@ -94,9 +103,9 @@ def decode_status(data: bytes) -> Status | Pong:
         return Pong(host_us, t_ms)
     if len(data) != 16 or data[0] != 0x01:
         raise ValueError("unknown STATUS record")
-    _, proto, ma, mi, pa, unit, present, ok, mv, i2c, stream, rate, hap, _ = struct.unpack("<8BHH4B", data)
+    _, proto, ma, mi, pa, unit, present, ok, mv, i2c, stream, rate, hap, drops = struct.unpack("<8BHH4B", data)
     return Status(proto, f"{ma}.{mi}.{pa}", unit, _bits(present), _bits(ok), mv or None, i2c, bool(stream), rate,
-                  bool(hap))
+                  bool(hap), drops)
 
 
 def command(opcode: int, *args: int) -> bytes:

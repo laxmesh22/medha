@@ -1,8 +1,9 @@
 """Talk to a flashed Auri strap over BLE and print link statistics.
 
 Imports firmware/protocol/auri_ble.py. Does not copy it.
-Usage: ble_probe.py [seconds]
+Usage: ble_probe.py [seconds] [address]
 The seconds argument is the first listen window (default 50 Hz). Command tests follow it.
+An optional BLE address pins the connection when more than one Auri is advertising.
 """
 from __future__ import annotations
 
@@ -33,6 +34,7 @@ class Bucket:
         self.accuracy = [0, 0, 0, 0]
         self.quats: list[tuple[float, float, float, float]] = []
         self.flags: list[tuple[bool, bool]] = []  # (valid, reset) in arrival order
+        self.times: list[float] = []
         self.gyro: list[tuple[float, float, float]] = []
         self.gravity: list[tuple[float, float, float]] = []
 
@@ -41,6 +43,7 @@ class Bucket:
         if self.t0 is None:
             self.t0 = now
         self.t1 = now
+        self.times.append(now)
         self.packets += 1
         self.valid += int(sample.valid)
         self.seqs.append(sample.seq)
@@ -110,17 +113,21 @@ def report(title: str, buckets: dict[int, Bucket]) -> None:
 
 async def main() -> int:
     seconds = float(sys.argv[1]) if len(sys.argv) > 1 else 20.0
+    only = sys.argv[2].upper() if len(sys.argv) > 2 else ""
     from bleak import BleakClient, BleakScanner
 
     want = auri_ble.SERVICE_UUID.lower()
     disconnects: list[str] = []
 
     def match(device, adv) -> bool:
+        if only and device.address.upper() != only:
+            return False
         name = (adv.local_name or device.name or "")
         uuids = [u.lower() for u in (adv.service_uuids or [])]
         return name in NAMES or want in uuids
 
-    print(f"scanning {seconds:.0f}s window requested; looking for {NAMES} or {auri_ble.SERVICE_UUID}")
+    print(f"scanning {seconds:.0f}s window requested; looking for {NAMES} or {auri_ble.SERVICE_UUID}"
+          + (f" at {only}" if only else ""))
     device = await BleakScanner.find_device_by_filter(match, timeout=15.0)
     if device is None:
         print("scan: no AURI-ARM / AURI-TRUNK and no matching service UUID")
@@ -129,6 +136,8 @@ async def main() -> int:
 
     buckets: dict[int, Bucket] = {}
     raw_count = 0
+    combined_raw = 0
+    imu_lengths: dict[int, int] = {}
     pongs: dict[int, asyncio.Future] = {}
     statuses: list[auri_ble.Status] = []
 
@@ -140,8 +149,14 @@ async def main() -> int:
         return bytes(data)
 
     def on_imu(_sender, data: bytearray) -> None:
-        sample = auri_ble.decode_imu(take(data))
+        nonlocal combined_raw
+        rawb = take(data)
+        imu_lengths[len(rawb)] = imu_lengths.get(len(rawb), 0) + 1
+        sample, raw = auri_ble.decode_imu_data(rawb)
         buckets.setdefault(sample.sensor, Bucket()).add(sample)
+        if raw is not None:
+            combined_raw += 1
+            buckets[sample.sensor].add_raw(raw)
 
     def on_raw(_sender, data: bytearray) -> None:
         nonlocal raw_count
@@ -155,96 +170,52 @@ async def main() -> int:
             fut = pongs.get(obj.host_us)
             if fut is not None and not fut.done():
                 fut.set_result((time.perf_counter(), obj))
+            print(f"pong t_ms={obj.t_ms}")
         else:
             statuses.append(obj)
+            print(f"STATUS notify_drops={obj.notify_drops} i2c_errors={obj.i2c_errors} rate={obj.rate_hz}")
 
     async with BleakClient(device, disconnected_callback=on_disconnect) as client:
         print(f"connected mtu={client.mtu_size}")
         raw_status = bytes(await client.read_gatt_char(auri_ble.STATUS_UUID))
         status = auri_ble.decode_status(raw_status)
         print(f"STATUS read: {status}")
+        if isinstance(status, auri_ble.Status):
+            print(f"STATUS notify_drops={status.notify_drops} i2c_errors={status.i2c_errors} rate={status.rate_hz}")
         await client.start_notify(auri_ble.IMU_DATA_UUID, on_imu)
         await client.start_notify(auri_ble.RAW_DATA_UUID, on_raw)
         await client.start_notify(auri_ble.STATUS_UUID, on_status)
 
-        buckets.clear()
-        await asyncio.sleep(seconds)
-        print(f"raw packets in first window: {raw_count}")
-        print(f"sensor 15 packets: {buckets[15].packets if 15 in buckets else 0}")
-        report(f"listen {seconds:.0f}s at default rate", buckets)
-
-        rtts: list[float] = []
-        offsets: list[float] = []
-        for i in range(10):
-            host_us = time.time_ns() // 1000
-            loop = asyncio.get_running_loop()
-            fut: asyncio.Future = loop.create_future()
-            pongs[host_us] = fut
-            t0 = time.perf_counter()
-            await client.write_gatt_char(
-                auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_TIME_PING, host_us), response=True
-            )
-            try:
-                t1, pong = await asyncio.wait_for(fut, timeout=1.0)
-            except asyncio.TimeoutError:
-                print(f"ping {i} timeout host_us={host_us}")
-                await asyncio.sleep(0.2)
-                continue
-            rtt_ms = (t1 - t0) * 1000.0
-            host_rx_us = host_us + int((t1 - t0) * 1_000_000)
-            offset_ms = host_rx_us / 1000.0 - pong.t_ms
-            rtts.append(rtt_ms)
-            offsets.append(offset_ms)
-            print(f"ping {i} rtt_ms {rtt_ms:.2f} t_ms {pong.t_ms} offset_ms {offset_ms:.2f}")
-            await asyncio.sleep(0.2)
-        if rtts:
-            best = min(range(len(rtts)), key=lambda k: rtts[k])
-            print(
-                f"rtt min {min(rtts):.2f} ms median {statistics.median(rtts):.2f} ms "
-                f"offset_at_min_rtt {offsets[best]:.2f} ms (lower envelope of host_rx_us/1000 - t_ms)"
-            )
-        else:
-            print("no pongs")
+        def stage_line() -> None:
+            lengths = " ".join(f"{n}x{imu_lengths[n]}" for n in sorted(imu_lengths)) or "none"
+            print(f"IMU_DATA lengths: {lengths}; separate RAW_DATA {raw_count}; combined raw {combined_raw}")
+            if statuses:
+                st = statuses[-1]
+                print(f"stage STATUS notify_drops={st.notify_drops} i2c_errors={st.i2c_errors}")
 
         async def listen(label: str, dur: float) -> None:
-            nonlocal raw_count
+            nonlocal raw_count, combined_raw
             buckets.clear()
+            imu_lengths.clear()
             raw_count = 0
+            combined_raw = 0
             await asyncio.sleep(dur)
-            print(f"raw packets during {label}: {raw_count}")
+            print(f"sensor 15 packets: {buckets[15].packets if 15 in buckets else 0}")
+            stage_line()
             report(label, buckets)
 
-        before = auri_ble.decode_status(bytes(await client.read_gatt_char(auri_ble.STATUS_UUID)))
-        print(f"STATUS before 100 Hz: {before}")
+        await listen(f"listen {seconds:.0f}s at default rate", seconds)
         await client.write_gatt_char(auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_RATE, 100), response=True)
-        await listen("rate 100 Hz for 10s", 10.0)
-        after = auri_ble.decode_status(bytes(await client.read_gatt_char(auri_ble.STATUS_UUID)))
-        print(f"STATUS after 100 Hz: {after}")
-
-        buckets.clear()
-        await client.write_gatt_char(
-            auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_IMU_RESET, 0x01), response=True
-        )
-        await asyncio.sleep(3.0)
-        print("IMU reset mask 0x01, next 3s:")
-        report("after IMU reset", buckets)
-        for sensor in sorted(buckets):
-            flags = buckets[sensor].flags
-
-            def mark(valid: bool, reset: bool) -> str:
-                if reset and valid:
-                    return "r"  # valid sample that also carries the reset flag
-                if reset:
-                    return "R"
-                return "V" if valid else "0"
-
-            marks = "".join(mark(valid, reset) for valid, reset in flags)
-            print(f"  sensor {sensor} flag trace ({len(marks)}): {marks}")
+        print(f"rate 100 write ok; connected={client.is_connected}")
+        await listen("rate 100 Hz for 30s", 30.0)
         await client.write_gatt_char(auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_RATE, 50), response=True)
+        print(f"rate 50 write ok; connected={client.is_connected}")
         await listen("rate 50 Hz for 5s", 5.0)
         await client.write_gatt_char(auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_STREAM, 0), response=True)
+        print(f"stream off write ok; connected={client.is_connected}")
         await listen("stream off for 3s", 3.0)
         await client.write_gatt_char(auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_STREAM, 1), response=True)
+        print(f"stream on write ok; connected={client.is_connected}")
         await listen("stream on for 2s", 2.0)
         await client.write_gatt_char(auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_HAPTIC, 1), response=True)
         await asyncio.sleep(0.4)
@@ -252,8 +223,60 @@ async def main() -> int:
         await client.write_gatt_char(auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_TARE), response=True)
         await asyncio.sleep(0.4)
         print(f"tare sent; still connected={client.is_connected}")
-        if statuses:
-            print(f"last STATUS notify: {statuses[-1]}")
+
+        buckets.clear()
+        imu_lengths.clear()
+        status_n = len(statuses)
+        pong_n = 0
+        t_reset = time.perf_counter()
+        await client.write_gatt_char(
+            auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_IMU_RESET, 0x01), response=True
+        )
+        print(f"IMU reset sent; connected={client.is_connected}")
+        await asyncio.sleep(0.25)
+        host_us = time.time_ns() // 1000
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future = loop.create_future()
+        pongs[host_us] = fut
+        t_ping = time.perf_counter()
+        await client.write_gatt_char(
+            auri_ble.COMMAND_UUID, auri_ble.command(auri_ble.CMD_TIME_PING, host_us), response=True
+        )
+        try:
+            t1, pong = await asyncio.wait_for(fut, timeout=1.0)
+            pong_n += 1
+            print(f"pong during reset rtt_ms {(t1 - t_ping) * 1000:.2f} t_ms {pong.t_ms}")
+        except asyncio.TimeoutError:
+            print("pong during reset: timeout")
+        await asyncio.sleep(4.0)
+        print(f"STATUS notifies during reset window: {len(statuses) - status_n}; pongs {pong_n}")
+        report("after IMU reset", buckets)
+
+        def mark(valid: bool, reset: bool) -> str:
+            if reset and valid:
+                return "r"
+            if reset:
+                return "R"
+            return "V" if valid else "0"
+
+        for sensor in sorted(buckets):
+            b = buckets[sensor]
+            marks = "".join(mark(valid, reset) for valid, reset in b.flags)
+            print(f"  sensor {sensor} flag trace ({len(marks)}): {marks}")
+            first_valid = next((t for (valid, _reset), t in zip(b.flags, b.times) if valid), None)
+            after_gap = None
+            seen_invalid = False
+            for (valid, reset), t in zip(b.flags, b.times):
+                if not valid:
+                    seen_invalid = True
+                elif seen_invalid and (reset or valid):
+                    after_gap = t
+                    break
+            if first_valid is not None:
+                print(f"  sensor {sensor} reset_to_first_packet_ms {(b.times[0] - t_reset) * 1000:.0f}")
+                print(f"  sensor {sensor} reset_to_first_valid_ms {(first_valid - t_reset) * 1000:.0f}")
+            if after_gap is not None:
+                print(f"  sensor {sensor} reset_to_valid_after_gap_ms {(after_gap - t_reset) * 1000:.0f}")
 
     print(f"disconnects: {len(disconnects)}")
     return 0

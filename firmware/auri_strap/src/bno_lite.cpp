@@ -73,6 +73,8 @@ bool BnoLite::begin(TwoWire& wire, uint8_t address) {
   // Soft reset (executable channel, command 1), then drain the advertisement / reset-complete / init packets.
   const uint8_t resetCmd[1] = {1};
   send(CH_EXECUTABLE, resetCmd, 1);
+  memset(seq_, 0, sizeof(seq_));  // the sensor restarts its sequence numbers too
+  startBootWindow();
   uint32_t t0 = millis();
   bool resetSeen = false;
   while (millis() - t0 < 600) {
@@ -83,25 +85,39 @@ bool BnoLite::begin(TwoWire& wire, uint8_t address) {
   }
   reset_ = false;
 
-  // Product ID request 0xF9 -> response 0xF8 on the control channel.
+  // Product ID request 0xF9 -> response 0xF8 on the control channel. The sensor sends four records; the first is the
+  // SH-2 application (part 10004148 on our BNO085). A request sent while it is still booting is lost, so retry.
   const uint8_t prodReq[2] = {0xF9, 0};
-  if (!send(CH_CONTROL, prodReq, 2)) return false;
-  t0 = millis();
-  while (millis() - t0 < 300) {
-    uint8_t ch;
-    int n = receive(ch);
-    if (n >= 14 && ch == CH_CONTROL && buf_[0] == 0xF8) {
-      resetCause = buf_[1];
-      swMajor = buf_[2];
-      swMinor = buf_[3];
-      partNumber = le32(buf_ + 4);
-      swBuild = le32(buf_ + 8);
-      swPatch = (uint16_t)le16(buf_ + 12);
-      return true;
+  for (int attempt = 0; attempt < 3; attempt++) {
+    if (!send(CH_CONTROL, prodReq, 2)) {
+      delay(50);
+      continue;
     }
-    if (n <= 0) delay(5);
+    t0 = millis();
+    while (millis() - t0 < 300) {
+      uint8_t ch;
+      int n = receive(ch);
+      if (n >= 14 && ch == CH_CONTROL && buf_[0] == 0xF8) {
+        resetCause = buf_[1];
+        swMajor = buf_[2];
+        swMinor = buf_[3];
+        partNumber = le32(buf_ + 4);
+        swBuild = le32(buf_ + 8);
+        swPatch = (uint16_t)le16(buf_ + 12);
+        return true;
+      }
+      if (n <= 0) delay(5);
+    }
   }
   return resetSeen;  // answered the reset but not the product ID: still usable, IDs stay 0
+}
+
+bool BnoLite::resetAsync() {
+  const uint8_t resetCmd[1] = {1};
+  bool ok = send(CH_EXECUTABLE, resetCmd, 1);
+  memset(seq_, 0, sizeof(seq_));  // the sensor restarts its sequence numbers too
+  startBootWindow();
+  return ok;
 }
 
 bool BnoLite::enable(uint8_t reportId, uint32_t intervalUs) {
