@@ -5,6 +5,7 @@ import { TopBar } from "../components/Layout";
 import { Empty, StatusBadge } from "../components/ui";
 import { api } from "../lib/api";
 import { resetDemo } from "../lib/demo";
+import { stationMeasured, stationMeasureLabel } from "../lib/station";
 import { useData } from "../lib/store";
 import { ClinicianForm } from "./Auth";
 
@@ -110,7 +111,7 @@ export function Library() {
         <div className="page-head">
           <div>
             <h1>Exercise library</h1>
-            <p>Movements the clinic station and the straps can measure and count. Prescribe them from a patient's care plan.</p>
+            <p>Prescribe these from a patient's care plan. The station measures three of them. The others are home exercises until the coach can run them.</p>
           </div>
         </div>
         <div className="grid grid-2">
@@ -120,14 +121,17 @@ export function Library() {
                 <h2>{e.name}</h2>
                 <span className="chip">{e.metric === "rotation" ? "Measures rotation" : "Measures elevation"}</span>
               </div>
+              <div style={{ margin: "8px 0 4px" }}>
+                <StatusBadge severity={stationMeasured(e.id) ? "good" : "warning"} label={stationMeasureLabel(e.id)} />
+              </div>
               <p className="ink2">{e.description}</p>
               <div className="muted" style={{ fontSize: 13 }}>Default dose: {e.default_sets} × {e.default_reps}{e.default_hold ? `, hold ${e.default_hold} s` : ""}</div>
             </div>
           ))}
         </div>
         <div className="note" style={{ marginTop: 18 }}>
-          Range of motion is computed from body geometry (camera skeleton and the arm, forearm and waist straps). The coach rejects
-          reps with trunk lean, elbow drift or shrugging, so counted reps are clean reps.
+          For the exercises marked "Measured at the station", range of motion comes from body geometry. The coach rejects
+          reps with trunk lean, elbow drift or shrugging, so counted reps are clean reps. Home exercises are not scored at the station yet.
         </div>
       </div>
     </>

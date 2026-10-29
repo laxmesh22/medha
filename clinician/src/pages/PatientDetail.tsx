@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { AdherenceChart, PainChart, RomChart } from "../components/charts";
 import { TopBar } from "../components/Layout";
 import { Avatar, Empty, Meter, StatTile, StatusBadge } from "../components/ui";
+import { stationMeasured, stationMeasureLabel } from "../lib/station";
 import { JoinCallLink, upcomingCalls, VideoConsult, whenLabel } from "../components/VideoConsult";
 import { api } from "../lib/api";
 import { deg, FLAG_LABELS, fmtDate, fmtDateTime, pct, relativeDay, type PatientSummary } from "../lib/stats";
@@ -106,7 +107,6 @@ function Progress({ s, onPlan }: { s: PatientSummary; onPlan: () => void }) {
   for (const sess of s.sessions.filter((x) => Date.now() - Date.parse(x.started_at) < 14 * 86_400_000))
     for (const e of sess.exercises) for (const f of e.flags) flags.set(f, (flags.get(f) ?? 0) + 1);
   const perDay = Math.max(...s.plan.items.map((i) => i.times_per_day));
-  const tracked = s.plan.items.filter((i) => i.exercise_id !== "pendulum");
   const metric = (id: string) => exercises.find((e) => e.id === id)?.metric ?? "elevation";
 
   return (
@@ -127,8 +127,9 @@ function Progress({ s, onPlan }: { s: PatientSummary; onPlan: () => void }) {
         <h2 style={{ marginBottom: 4 }}>Range of motion</h2>
         <p className="muted" style={{ margin: "0 0 12px", fontSize: 13 }}>Best rep of each day, measured by the camera and straps (geometry, not typed in).</p>
         <div className="grid grid-2">
-          {tracked.map((it) => {
-            const r = s.rom[it.exercise_id];
+          {s.plan.items.map((it) => {
+            const measured = stationMeasured(it.exercise_id);
+            const r = measured ? s.rom[it.exercise_id] : undefined;
             const gain = r && r.latest !== null && r.first !== null ? r.latest - r.first : null;
             return (
               <div key={it.exercise_id} className="card chart-card">
@@ -136,13 +137,17 @@ function Progress({ s, onPlan }: { s: PatientSummary; onPlan: () => void }) {
                   <div>
                     <h3>{exerciseName(it.exercise_id)}</h3>
                     <div className="muted" style={{ fontSize: 13 }}>
-                      {gain === null ? "No data yet" : <><span className={gain >= 0 ? "delta-good" : "delta-bad"}>{gain >= 0 ? "▲" : "▼"} {Math.abs(Math.round(gain))}°</span> since the first session</>}
+                      {measured ? (
+                        gain === null ? "No data yet" : <><span className={gain >= 0 ? "delta-good" : "delta-bad"}>{gain >= 0 ? "▲" : "▼"} {Math.abs(Math.round(gain))}°</span> since the first session</>
+                      ) : stationMeasureLabel(it.exercise_id)}
                     </div>
                   </div>
-                  <span className="big num">{deg(r?.latest ?? null)}</span>
+                  <span className="big num">{measured ? deg(r?.latest ?? null) : "—"}</span>
                 </div>
-                {r?.series.length ? <RomChart series={r.series} target={it.rom_target_deg} max={metric(it.exercise_id) === "rotation" ? 90 : 180} />
-                  : <Empty>No measured reps yet.</Empty>}
+                {measured
+                  ? (r?.series.length ? <RomChart series={r.series} target={it.rom_target_deg} max={metric(it.exercise_id) === "rotation" ? 90 : 180} />
+                    : <Empty>No measured reps yet.</Empty>)
+                  : <Empty>Not measured by the station yet</Empty>}
               </div>
             );
           })}
@@ -276,8 +281,13 @@ function PlanEditor({ s, exercises, onDone, onCancel }: { s: PatientSummary; exe
               <tr key={k}>
                 <td>
                   <select className="input" value={it.exercise_id} onChange={(e) => upd(k, { exercise_id: e.target.value })} aria-label="Exercise">
-                    {exercises.filter((e) => e.id === it.exercise_id || !items.some((i) => i.exercise_id === e.id)).map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    {exercises.filter((e) => e.id === it.exercise_id || !items.some((i) => i.exercise_id === e.id)).map((e) => (
+                      <option key={e.id} value={e.id}>{e.name} — {stationMeasureLabel(e.id)}</option>
+                    ))}
                   </select>
+                  <div style={{ marginTop: 6 }}>
+                    <StatusBadge severity={stationMeasured(it.exercise_id) ? "good" : "warning"} label={stationMeasureLabel(it.exercise_id)} />
+                  </div>
                 </td>
                 <td><input className="input num" type="number" min={1} max={10} value={it.sets} onChange={(e) => upd(k, { sets: num(e.target.value, 1, 10) })} aria-label="Sets" /></td>
                 <td><input className="input num" type="number" min={1} max={50} value={it.reps} onChange={(e) => upd(k, { reps: num(e.target.value, 1, 50) })} aria-label="Reps" /></td>
