@@ -246,5 +246,8 @@ Signup, emergency, attention page, static profile. Not committed, not deployed.
 - Upper-arm band FE:FD: healthy on the bench (50 Hz, 0 gaps, valid 100%, i2c 0), but the phone link timed out at
   03:46 and the app never retried. AURIMEDIC 2afc0dc (branch auth0-supabase, not pushed) retries a dropped band
   every 3 s; debug APK installed on 4P85WKTCDMX4QSO7. Waist B4:7A was not advertising (off or flat battery).
+- Arm bands were swapped in the app: while the forearm moved, FE:FD (upper_arm slot) turned at 225 deg/s and AB:6E
+  (forearm slot) at 1.4. The phone status now reports `gyro_dps` per slot (d6883fa) to spot this. App map changed to
+  FE:FD forearm, AB:6E upper arm; installed. Old calibration is invalid after the swap: run guided calibration.
 - `test_auri_cv::test_pipeline_reads_the_worker_skeleton_and_skips_depth_lift` and
   `test_straps::test_straps_off_leaves_the_state_without_straps` fail since straps are always published (STATUS 115).
