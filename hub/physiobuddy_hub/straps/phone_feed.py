@@ -9,9 +9,13 @@ import threading
 import time
 from collections import deque
 
-from ..core.strap_kin import SENSORS
+import numpy as np
+
+from ..core.strap_kin import SENSORS, WORLD_UP, axis_angle, matrix_to_quat, quat_to_matrix
 
 STALE_MS = 200
+# A sensor reboot shorter than this keeps the calibration (the yaw is carried over from the last good sample).
+REANCHOR_MAX_GAP_MS = 10000.0
 WIRE = {"upper_arm", "forearm", "trunk"}
 
 
@@ -48,6 +52,10 @@ class PhoneStraps:
         self._new: dict[str, deque] = {name: deque(maxlen=800) for name in SENSORS}
         self._last_any = 0.0
         self._resets: dict[str, int] = {name: 0 for name in SENSORS}
+        self._reanchors: dict[str, int] = {name: 0 for name in SENSORS}
+        self._pending: set = set()
+        self._last_good: dict = {}
+        self._yaw_fix: dict = {name: np.eye(3) for name in SENSORS}
         self.generation = 0
 
     def receiving(self) -> bool:
@@ -69,8 +77,17 @@ class PhoneStraps:
             seq = None if seq is None else int(seq) & 0xFFFF
         except (TypeError, ValueError):
             seq = None
+        with self._lock:
+            if msg.get("reset"):
+                self._resets[name] += 1
+                self._pending.add(name)
+            if quat is not None:
+                try:
+                    quat = self._continue_yaw(name, quat_to_matrix(quat), now)
+                except ValueError:                     # zero-length quaternion
+                    quat, valid = None, False
         view = {
-            "quat": [round(float(v), 5) for v in quat] if quat else None,
+            "quat": [round(float(v), 5) for v in quat] if quat is not None else None,
             "gyro": None if gyro is None else [round(v, 5) for v in gyro],
             "gravity": None if gravity is None else [round(v, 5) for v in gravity],
             "t_ms": round(now, 1),
@@ -78,21 +95,39 @@ class PhoneStraps:
             "accuracy": None,
             "reset": False,
             "age_ms": 0.0,
-            "available": bool(valid and quat),
+            "available": bool(valid and quat is not None),
             "seq": seq,
             "_rx": now,
         }
         with self._lock:
             self._last_any = time.time()
-            if msg.get("reset"):
-                # A rebooted sensor has a new yaw reference. A new generation drops the calibration.
-                self.generation += 1
-                self._resets[name] += 1
             view["reset"] = bool(msg.get("reset"))
             self._view[name] = view
             self._rx[name].append(now)
             if view["available"]:
                 self._new[name].append((view["quat"], view["gyro"], seq))
+
+    def _continue_yaw(self, name: str, R: np.ndarray, now: float) -> np.ndarray:
+        """Quaternion in the sensor's first yaw reference, across reboots. Call with the lock held.
+
+        A rebooted BNO085 restarts its game rotation vector with a new, arbitrary yaw; tilt still comes from gravity.
+        Right after the reboot the limb is where it was a moment ago, so the yaw step between the last good sample and
+        the first new one is the reboot's, and is taken out. Too long a gap and the limb may have turned: a new
+        generation then drops the calibration instead.
+        """
+        if name in self._pending:
+            self._pending.discard(name)
+            last = self._last_good.get(name)
+            if last is not None and now - last[1] <= REANCHOR_MAX_GAP_MS:
+                M = last[0] @ R.T                      # rotation taking the new reference onto the old one
+                self._yaw_fix[name] = axis_angle(WORLD_UP, float(np.arctan2(M[1, 0], M[0, 0])))
+                self._reanchors[name] += 1
+            else:
+                self._yaw_fix[name] = np.eye(3)
+                self.generation += 1
+        R = self._yaw_fix[name] @ R
+        self._last_good[name] = (R, now)
+        return matrix_to_quat(R)
 
     def _fresh(self, view: dict, now: float) -> dict:
         age = now - float(view.get("_rx", now))
@@ -146,6 +181,7 @@ class PhoneStraps:
                 "gyro_dps": None if gyro is None else round(math.degrees(math.sqrt(sum(g * g for g in gyro))), 1),
                 "seq": view.get("seq") if view else None,
                 "resets": self._resets[name],
+                "reanchored": self._reanchors[name],
                 "name": "phone",
                 "address": None,
                 "slot": name,
