@@ -353,9 +353,12 @@ class CameraPipeline:
         refined = sorted(set(self.strap_cal.forward_raise) - before)
         if not refined:
             return {"ok": False, "reason": "raise not seen; move the straight arm slowly forward", "refined": []}
+        # The straight arm also pins the forearm to the upper arm (long axis and forward).
+        fit = self.strap_cal.align_forearm_to_upper_arm(samples)
         self._strap_cal_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         save_worn_mount(self.strap_cal, self._strap_cal_time)
-        return {"ok": True, "refined": refined, "calibration": self.calibration_view()}
+        return {"ok": True, "refined": refined, "forearm_fit_deg": None if fit is None else round(fit, 1),
+                "calibration": self.calibration_view()}
 
     def finish_lean(self, samples: dict) -> dict:
         self._sync_strap_cal()

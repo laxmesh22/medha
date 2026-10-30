@@ -127,6 +127,49 @@ def test_waist_lean_is_rejected_when_the_trunk_stays_upright():
     assert not cal.refine_trunk_from_lean(rows) and "trunk" not in cal.forward_raise
 
 
+def test_straight_arm_raise_fixes_a_forearm_calibrated_with_a_bent_elbow():
+    """Live: the forearm sat 30-50 deg off the upper arm with the elbow straight."""
+    from physiobuddy_hub.straps.calibrate import strap_pose
+
+    side, spin = "right", {"forearm": 70.0, "upper_arm": -30.0}
+    bent = axis_angle(EZ, np.radians(20))                           # forearm 20 deg forward during the N-pose
+    q = wear({"upper_arm": np.eye(3), "forearm": bent}, side, spin, seed=8)
+    cal = StrapCalibration.from_npose(side, {s: [q[s]] * 5 for s in q})
+    rows = {s: [] for s in SENSORS}
+    for d in range(0, 120, 3):
+        R = axis_angle(EZ, np.radians(d))                           # slow straight-arm forward raise
+        q = wear({"upper_arm": R, "forearm": R}, side, spin, seed=8)
+        for s in q:
+            rows[s].append((q[s].tolist(), None))
+    cal.refine_from_raise_direction(rows)
+
+    def elbow(segs):
+        q = wear(segs, side, spin, seed=8)
+        p = strap_pose(cal, {s: {"available": True, "quat": q[s].tolist()} for s in q})
+        return np.degrees(np.arccos(np.clip(np.dot(p["upper_arm"], p["forearm"]), -1, 1))), p
+
+    side_raise = axis_angle([1.0, 0, 0], np.radians(-90))
+    before, _ = elbow({"upper_arm": side_raise, "forearm": side_raise})
+    err = cal.align_forearm_to_upper_arm(rows)
+    assert err is not None and err < 1.0
+    after, p = elbow({"upper_arm": side_raise, "forearm": side_raise})
+    assert before > 10 and after < 2 and p["forearm"][0] < -0.95     # straight arm out to the patient's right
+    bend, p = elbow({"upper_arm": np.eye(3), "forearm": axis_angle(EZ, np.radians(90))})
+    assert abs(bend - 90) < 2 and p["forearm"][2] > 0.95              # elbow 90, forearm toward the camera
+
+
+def test_forearm_fit_is_refused_when_the_elbow_bends_during_the_raise():
+    cal = npose("right", seed=8)
+    rows = {s: [] for s in SENSORS}
+    for d in range(0, 120, 3):
+        q = wear({"upper_arm": axis_angle(EZ, np.radians(d)), "forearm": axis_angle(EZ, np.radians(min(2 * d, 150)))},
+                 "right", seed=8)
+        for s in q:
+            rows[s].append((q[s].tolist(), None))
+    before = cal.mount["forearm"].copy()
+    assert cal.align_forearm_to_upper_arm(rows) is None and np.allclose(cal.mount["forearm"], before)
+
+
 def test_calibration_says_when_a_band_is_on_the_wrong_body_part():
     from physiobuddy_hub.straps.calibrate import placement_problem
 

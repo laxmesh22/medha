@@ -37,6 +37,8 @@ SENSORS = ("upper_arm", "forearm", "trunk")
 WORLD_UP = np.array([0.0, 0.0, 1.0])          # gravity-aligned sensor world (BNO085 game rotation vector)
 DOWN = np.array([0.0, -1.0, 0.0])             # segment / thorax "down"
 MIN_LEAN_TILT = 0.2                            # sin of ~12 deg: below this the lean's direction is noise
+MIN_RAISE_SPAN_DEG = 40.0                      # the arm must travel this far to fix the forearm's axis
+MAX_FOREARM_FIT_DEG = 12.0                     # worse than this the elbow was not straight during the raise
 
 # Where each pod axis points on the body in the N-pose, in segment axes: (pod X, pod Y, pod Z). Pod Y = Z x X.
 _M = {
@@ -231,6 +233,52 @@ class StrapCalibration:
             self.forward_raise[name] = True
             done.append(name)
         return done
+
+    def align_forearm_to_upper_arm(self, samples: dict) -> Optional[float]:
+        """``samples``: sensor -> list of (quaternion, gyro or None) during a straight-arm raise.
+
+        The N-pose takes the forearm's long axis from gravity, so a forearm that was not hanging straight (elbow a
+        little bent, hand on the thigh) leaves the axis tilted, and wrist twist then swings the error around. With the
+        elbow straight the forearm points where the upper arm points all through the raise, which fixes the long
+        axis (2 dof) and its forward (1 dof) together. Returns the mean fit error in degrees, or None when rejected.
+
+        The two streams are paired by their position in the capture: both run at the same rate and the raise is slow.
+        """
+        if "forearm" not in self.ref or "upper_arm" not in self.ref:
+            return None
+        fore = [quat_to_matrix(q) for q, _g in samples.get("forearm") or []]
+        arms = [self.segment("upper_arm", q) for q, _g in samples.get("upper_arm") or []]
+        arms = [Q for Q in arms if Q is not None]
+        if len(fore) < 20 or len(arms) < 20:
+            return None
+        n = min(len(fore), len(arms))
+        R = [fore[round(i * (len(fore) - 1) / (n - 1))] for i in range(n)]
+        u = np.array([arms[round(i * (len(arms) - 1) / (n - 1))] @ DOWN for i in range(n)])
+        if max(_angle_deg(u[0], v) for v in u) < MIN_RAISE_SPAN_DEG:
+            return None                               # the arm did not travel far enough to pin the forearm down
+        W0 = np.array([[1.0, 0, 0], [0, 0, -1.0], [0, 1.0, 0]])      # body frame -> sensor world, body up = world up
+        best = None
+        for step in (1.0, 0.05):
+            centre = 0.0 if best is None else best[0]
+            for psi in np.radians(np.arange(-180.0, 180.0, step) if step == 1.0 else centre + np.arange(-1.0, 1.0, step)):
+                W = axis_angle(WORLD_UP, psi) @ W0
+                w = u @ W.T                            # target directions in the forearm sensor's world
+                a = np.sum([Rt.T @ wt for Rt, wt in zip(R, w)], axis=0)
+                a /= np.linalg.norm(a)
+                cost = float(np.sum([np.linalg.norm(Rt @ a - wt) ** 2 for Rt, wt in zip(R, w)]))
+                if best is None or cost < best[3]:
+                    best = (float(np.degrees(psi)), W, a, cost)
+        _, W, a, _ = best
+        err = float(np.mean([_angle_deg(Rt @ a, wt) for Rt, wt in zip(R, u @ W.T)]))
+        if err > MAX_FOREARM_FIT_DEG:
+            return None                                # the elbow bent during the raise; keep the N-pose axis
+        # Keep segment() unchanged: a virtual reference orientation in which this long axis hangs straight down,
+        # and the mount that makes reference @ mount = W.
+        Rc = align(a, -WORLD_UP)
+        self.ref["forearm"] = Rc
+        self.mount["forearm"] = Rc.T @ W
+        self.forward_raise["forearm"] = True
+        return err
 
     def refine_trunk_from_lean(self, samples: dict) -> bool:
         """``samples``: sensor -> list of (quaternion, gyro or None) during a slow forward lean from the hips.
