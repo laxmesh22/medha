@@ -66,9 +66,9 @@ export function summarize(patient: Patient, plans: CarePlan[], sessions: Session
   const planned7 = Math.round(plannedPerWeek(plan) * weekFrac);
   const adherence7 = plan && planned7 > 0 ? Math.min(1, in7.length / planned7) : null;
   const pain = (ss: Session[]) => mean(ss.map((s) => s.pain_after).filter((v): v is number => v !== null));
-  const reps = in7.flatMap((s) => s.exercises);
+  const reps = in7.flatMap((s) => s.exercises).filter((e) => e.reps_rejected !== null);
   const counted = reps.reduce((a, e) => a + e.reps_counted, 0);
-  const rejected = reps.reduce((a, e) => a + e.reps_rejected, 0);
+  const rejected = reps.reduce((a, e) => a + (e.reps_rejected ?? 0), 0);
   const formQuality = counted + rejected > 0 ? counted / (counted + rejected) : null;
 
   const rom: PatientSummary["rom"] = {};

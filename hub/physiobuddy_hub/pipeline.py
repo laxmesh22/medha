@@ -15,7 +15,10 @@ import numpy as np
 from . import __version__
 from .capture.lift import lift_pose
 from .core.coach import EXERCISES, Coach
-from .straps.calibrate import judge_npose, strap_frame
+from .core.display_gate import LandmarkGate, close_hint
+from .core.pose_smooth import DisplayPose
+from .straps.calibrate import judge_npose, load_worn_mount, save_worn_mount, strap_frame, strap_pose
+from .straps.phone_feed import PhoneStraps
 from .core.quality import SegmentTracker
 from .core.skeleton_kin import SkeletonKinematics
 from .datatypes import (
@@ -88,7 +91,8 @@ def guidance_codes(sk: Optional[Skeleton3D], side: str) -> list:
 class CameraPipeline:
     def __init__(self, source, pose_estimator, up_cam: np.ndarray, side: str = "right",
                  min_score: float = 0.4, log_dir: Optional[Path] = None, debug_video: bool = False,
-                 meta: Optional[dict] = None, motionnet=None, straps=None):
+                 meta: Optional[dict] = None, motionnet=None, straps=None,
+                 pose_smoothing: str = "light"):
         """``motionnet``: a ``MotionNetRunner`` (hybrid judging) or None for rules-only coaching."""
         self.source = source
         self.pose = pose_estimator
@@ -110,9 +114,13 @@ class CameraPipeline:
         self.recorder = None  # set by --dataset-dir; never the training folder by default
         self.nn = motionnet if motionnet is not None and motionnet.available else None
         self.straps = straps  # StrapLink, or None when --straps off. Not used by the coach.
+        self.phone = PhoneStraps()  # samples the phone forwards; the phone holds Bluetooth
         self.strap_cal = None
         self._strap_cal_time = None
         self._strap_gen = None
+        self.pose_smoothing = pose_smoothing
+        self._display = DisplayPose(pose_smoothing)
+        self._gate = LandmarkGate()
         self.autodetect = False
         self._auto_votes: deque = deque()
         if log_dir is not None:
@@ -132,6 +140,7 @@ class CameraPipeline:
             if changed:
                 self.strap_cal = None
                 self._strap_cal_time = None
+                self._load_worn_mount()
 
     def set_autodetect(self, enabled: bool) -> dict:
         with self._lock:
@@ -255,25 +264,54 @@ class CameraPipeline:
         if self._log_fh:
             self._log_fh.close()
 
+    def strap_source(self):
+        """The phone feed while it is sending, otherwise the laptop Bluetooth link."""
+        if self.phone.receiving():
+            return self.phone
+        return self.straps
+
     def _sync_strap_cal(self) -> None:
         """A reconnect gives the BNO a new yaw reference, so the saved N-pose no longer applies."""
-        if self.strap_cal is None or self.straps is None:
+        src = self.strap_source()
+        if self.strap_cal is None or src is None:
             return
-        gen = getattr(self.straps, "generation", None)
+        gen = getattr(src, "generation", None)
         if gen is not None and gen != self._strap_gen:
             self.strap_cal = None
             self._strap_cal_time = None
 
+    def _load_worn_mount(self) -> None:
+        """Use the last position the sensors were worn in, until a new calibration replaces it."""
+        loaded = load_worn_mount(self.side)
+        if loaded is None:
+            return
+        self.strap_cal, self._strap_cal_time = loaded
+        src = self.strap_source() if hasattr(self, "phone") else None
+        self._strap_gen = None if src is None else getattr(src, "generation", None)
+
     def calibration_view(self) -> dict:
         self._sync_strap_cal()
+        slots = []
+        for name in ("upper_arm", "forearm", "trunk"):
+            if self.strap_cal is None or name not in self.strap_cal.ref:
+                slots.append({"sensor": name, "state": "none", "offset_deg": None})
+                continue
+            raised = bool(self.strap_cal.forward_raise.get(name))
+            tilt = self.strap_cal.gravity_offset_deg(name)
+            slots.append({
+                "sensor": name,
+                "state": "raise" if raised else "npose",
+                "offset_deg": None if tilt is None else round(tilt, 2),
+            })
         if self.strap_cal is None:
-            return {"state": "none", "time": None, "sensors": []}
+            return {"state": "none", "time": None, "sensors": [], "slots": slots}
         raised = sorted(name for name, done in self.strap_cal.forward_raise.items() if done)
         return {
             "state": "npose+raise" if raised else "npose",
             "time": self._strap_cal_time,
             "sensors": sorted(self.strap_cal.ref),
             "forward_raise": raised,
+            "slots": slots,
         }
 
     def finish_npose(self, samples: dict) -> dict:
@@ -286,31 +324,39 @@ class CameraPipeline:
 
             self.strap_cal = StrapCalibration.from_npose(self.side, judged["quats"])
             self._strap_cal_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            self._strap_gen = None if self.straps is None else getattr(self.straps, "generation", None)
+            src = self.strap_source() or self.phone
+            self._strap_gen = None if src is None else getattr(src, "generation", None)
+            save_worn_mount(self.strap_cal, self._strap_cal_time)
         return {"ok": True, "sensors": sensors, "calibration": self.calibration_view()}
 
     def finish_raise(self, samples: dict) -> dict:
         self._sync_strap_cal()
         if self.strap_cal is None:
             return {"ok": False, "reason": "stand still in the N-pose first", "refined": []}
+        before = set(self.strap_cal.forward_raise)
+        # The way the arm actually moved sets forward. Gyro is only a fallback.
+        self.strap_cal.refine_from_raise_direction(samples)
         gyro = {}
         for name, rows in samples.items():
             rates = [g for _q, g in rows if g is not None]
             if rates:
                 gyro[name] = np.degrees(np.asarray(rates, float))
-        before = set(self.strap_cal.forward_raise)
         self.strap_cal.refine_with_forward_raise(gyro)
         refined = sorted(set(self.strap_cal.forward_raise) - before)
         if not refined:
             return {"ok": False, "reason": "raise not seen; move the straight arm slowly forward", "refined": []}
         self._strap_cal_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_worn_mount(self.strap_cal, self._strap_cal_time)
         return {"ok": True, "refined": refined, "calibration": self.calibration_view()}
 
     def strap_status(self) -> Optional[dict]:
-        if self.straps is None:
+        # The phone feed is always there. Show its three slots even before the first sample,
+        # so the station page is not blank while the phone is still connecting.
+        link = self.strap_source() or self.phone
+        if link is None:
             return None
         try:
-            return self.straps.status()
+            return link.status()
         except Exception:
             log.exception("strap status failed")
             return {"enabled": True, "error": "unavailable"}
@@ -385,11 +431,13 @@ class CameraPipeline:
                     self._rest_samples.append(angles.shrug_index.value)
         angles_d = angles.to_dict() if angles else None
         self._sync_strap_cal()
-        strap_angles, imu_block = (None, None)
-        if self.straps is not None and self.strap_cal is not None:
+        strap_angles, imu_block, pose = (None, None, None)
+        link = self.strap_source()
+        if link is not None and self.strap_cal is not None:
             # frame_view does not wait if a strap callback holds the lock. snapshot() would.
-            view = self.straps.frame_view() if hasattr(self.straps, "frame_view") else self.straps.snapshot()
+            view = link.frame_view() if hasattr(link, "frame_view") else link.snapshot()
             strap_angles, imu_block = strap_frame(self.strap_cal, view)
+            pose = strap_pose(self.strap_cal, view)
         with self._lock:
             t_s = frame.timestamp_ms / 1000.0
             nn_out = None if self.nn is None else self.nn.push(sk, angles_d, side, self.up_cam,
@@ -417,6 +465,20 @@ class CameraPipeline:
         self._times.append(time.perf_counter())
         fps = (len(self._times) - 1) / (self._times[-1] - self._times[0]) if len(self._times) > 1 else 0.0
 
+        raw_kp = self._display_keypoints(sk)
+        raw_2d = None
+        if pose2d is not None:
+            width, height = frame.intrinsics.width, frame.intrinsics.height
+            raw_2d = []
+            for u, v in pose2d.keypoints_px:
+                if not (np.isfinite(u) and np.isfinite(v)):
+                    raw_2d.append(None)
+                else:
+                    raw_2d.append([round(float(u) / width, 4), round(float(v) / height, 4)])
+        # Drawn skeleton only. angles above stay on the measured pose.
+        disp_kp, disp_2d = self._display.apply(raw_kp, raw_2d, frame.timestamp_ms)
+        score_row = None if pose2d is None else [None if not np.isfinite(s) else round(float(s), 3) for s in pose2d.scores]
+        overlay = self._gate.update(raw_2d, score_row, frame.timestamp_ms)
         state = {
             "type": "camera",
             "t_ms": frame.timestamp_ms,
@@ -424,9 +486,10 @@ class CameraPipeline:
             "fps": round(fps, 1),
             "proc_ms": round(proc_ms, 1),
             "side": side,
+            "pose_smoothing": self.pose_smoothing,
             "guidance": guidance_codes(sk, side),
             "body_depth_m": None if sk is None or sk.body_depth_m is None else round(sk.body_depth_m, 3),
-            "keypoints": self._display_keypoints(sk),
+            "keypoints": disp_kp,
             "angles": angles.to_dict() if angles else None,
             "segments": segments.medians(),
             "shrug_baseline": kin.shrug_baseline,
@@ -434,12 +497,13 @@ class CameraPipeline:
             "recorder": recorder_state,
             "autodetect": {"enabled": self.autodetect, "available": self._autodetect_available(),
                            "model_loaded": self.nn is not None},
-            "scores": None if pose2d is None else [round(float(s), 3) for s in pose2d.scores],
-            # normalised 2D keypoints for the "AI vision" overlay (no image needed)
-            "kp2d": None if pose2d is None else [
-                [round(float(u) / frame.intrinsics.width, 4), round(float(v) / frame.intrinsics.height, 4)]
-                for u, v in pose2d.keypoints_px],
+            "scores": score_row,
+            # normalised 2D keypoints for the overlay. Display follow only; not the measurement.
+            "kp2d": disp_2d,
+            "overlay": overlay,
+            "close_hint": close_hint(raw_2d, score_row),
             "image_aspect": round(frame.intrinsics.width / frame.intrinsics.height, 4),
+            "strap_pose": pose,
         }
         engine = getattr(self.source, "engine_view", None)
         if engine is not None:

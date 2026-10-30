@@ -358,6 +358,9 @@ details.fold .fold-body > .btn-quiet { margin-bottom: 10px; }
 #straps-card .rec-btns { flex-direction: column; align-items: stretch; }
 #straps-link { flex: 1 1 200px; font: 500 12px var(--mono); color: var(--t3); text-align: right; white-space: pre-line; }
 #straps-compare { margin: 12px 0 0; }
+.strap-slots { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.strap-slots li { display: flex; justify-content: space-between; gap: 12px; font: 500 12.5px var(--mono); color: var(--t2); }
+.strap-slots b { font-weight: 600; color: var(--teal); }
 .strap-pair { display: flex; gap: 18px; margin-top: 4px; }
 .strap-pair div { min-width: 88px; }
 .strap-pair span { display: block; font-size: 12px; color: var(--t3); }

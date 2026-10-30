@@ -1,5 +1,5 @@
 import { ArrowLeft, ClipboardList, History, PhoneCall, Plus, Stethoscope, Trash2, TrendingUp, Table2 } from "lucide-react";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { AdherenceChart, PainChart, RomChart } from "../components/charts";
 import { TopBar } from "../components/Layout";
@@ -344,7 +344,7 @@ function Sessions({ s }: { s: PatientSummary }) {
                 <td className="ink2" style={{ fontSize: 13.5 }}>
                   {x.exercises.map((e) => (
                     <div key={e.exercise_id}>
-                      {exerciseName(e.exercise_id)}: <b className="num">{deg(e.peak_deg)}</b>, {e.reps_counted}/{e.reps_counted + e.reps_rejected} reps
+                      {exerciseName(e.exercise_id)}: <b className="num">{deg(e.peak_deg)}</b>, {e.reps_rejected == null ? `${e.reps_counted} reps` : `${e.reps_counted}/${e.reps_counted + e.reps_rejected} reps`}
                     </div>
                   ))}
                 </td>
@@ -355,6 +355,72 @@ function Sessions({ s }: { s: PatientSummary }) {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+const INTAKE_LABELS: Record<string, string> = {
+  gender: "Gender",
+  onset: "When it started",
+  trigger: "How it started",
+  trigger_note: "How it started (note)",
+  main_problem: "Main problem",
+  pain_now: "Pain now (0–10)",
+  sleep: "Disturbs sleep",
+  hard_tasks: "Hard tasks",
+  load: "Usual load on the arm",
+  load_increased: "Load increased lately",
+  load_note: "Load (note)",
+  past_injury: "Past injury",
+  past_injury_when: "When the past injury was",
+  prior_frozen: "Frozen shoulder before",
+  seen_before: "Seen someone already",
+  seen_who: "Seen",
+};
+
+function intakeText(value: unknown): string {
+  if (Array.isArray(value)) return value.map((v) => String(v)).join(", ");
+  if (value == null || value === "") return "";
+  return String(value);
+}
+
+function IntakeHistory({ patientId }: { patientId: string }) {
+  const { intakes, consents } = useData();
+  const rows = intakes.filter((row) => row.patient_id === patientId).sort((a, b) => b.version - a.version);
+  const agreed = consents.filter((row) => row.patient_id === patientId);
+  const latest = rows[0];
+  const fields = latest
+    ? (Object.keys(INTAKE_LABELS) as (keyof typeof INTAKE_LABELS)[])
+        .map((key) => [key, (latest as unknown as Record<string, unknown>)[key]] as const)
+        .filter(([, value]) => intakeText(value) !== "")
+    : [];
+  return (
+    <div className="card card-pad span-2">
+      <h2 style={{ marginBottom: 14 }}>From the patient app</h2>
+      {!latest && <p className="muted">No intake submitted.</p>}
+      {latest && (
+        <>
+          <p className="muted" style={{ marginTop: 0 }}>Version {latest.version} · {fmtDateTime(latest.submitted_at)}</p>
+          <dl className="kv">
+            {fields.map(([key, value]) => (
+              <Fragment key={key}>
+                <dt>{INTAKE_LABELS[key]}</dt>
+                <dd>{intakeText(value)}</dd>
+              </Fragment>
+            ))}
+          </dl>
+        </>
+      )}
+      {rows.slice(1).map((row) => (
+        <p key={row.id} className="muted">Version {row.version} · {fmtDateTime(row.submitted_at)}</p>
+      ))}
+      <h3 style={{ marginTop: 18 }}>Consent</h3>
+      {agreed.length === 0 && <p className="muted">No consent recorded.</p>}
+      {agreed.map((row) => (
+        <p key={row.id} className="muted">
+          {row.kind === "privacy" ? "Privacy" : "Share with clinician"} · {row.version} · {fmtDateTime(row.agreed_at)}
+        </p>
+      ))}
     </div>
   );
 }
@@ -384,6 +450,7 @@ function Medical({ s }: { s: PatientSummary }) {
           <dt>Notes</dt><dd>{p.notes ?? "—"}</dd>
         </dl>
       </div>
+        <IntakeHistory patientId={p.id} />
       <div className="card card-pad span-2">
         <div className="row between wrap">
           <div>

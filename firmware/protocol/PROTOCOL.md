@@ -1,8 +1,8 @@
-# Auri strap BLE protocol v2
+# Auri strap BLE protocol v3
 
 Fixed contract between the strap firmware (`firmware/auri_strap/`) and the hub. The C header
 (`../auri_strap/src/auri_ble.h`) and the Python decoder (`hub/physiobuddy_hub/straps/protocol.py`, re-exported by `auri_ble.py`) implement exactly this page; change all three together and bump
-`PROTOCOL_VERSION`. v1 → v2: combined 37-byte IMU_DATA, notify-drop counter in STATUS. Based on `agenthandoff.md` §7, with the time-sync ping from `jetson_realsense_ai_design.md`.
+`PROTOCOL_VERSION`. v1 → v2: combined 37-byte IMU_DATA, notify-drop counter in STATUS. v2 → v3: STATUS type `0x07` (power) and COMMAND `0x07`. The 16-byte status record is unchanged, and a device that still sends protocol byte 2 (no `0x07`) stays valid. The hub does not require v3. Based on `agenthandoff.md` §7, with the time-sync ping from `jetson_realsense_ai_design.md`.
 
 All multi-byte fields are **little-endian**. Every v1 packet fits the default 20-byte ATT payload, so a client that
 does not negotiate the MTU still gets everything; the 37-byte combined packet is used only after a larger MTU.
@@ -65,13 +65,14 @@ MTU (23) the device falls back to the v1 pair. Receivers must accept both length
 | 0x04 | `on` uint8 | 1 start streaming, 0 stop |
 | 0x05 | `mask` uint8 | hard-reset the IMUs in the bit mask (bit = sensor_id) |
 | 0x06 | `host_us` uint64 | time ping: the device answers on STATUS with a pong |
+| 0x07 | `mode` uint8, then `minutes` uint8 when mode is 2 | power: 0 run (idle policy off), 1 sleep now (reports off, 1 s advertising, light sleep), 2 set the idle timeout in minutes (0 disables it) |
 
 ## STATUS
 Status record (16 bytes), notified every 2 s and on change:
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 1 | type = 0x01 |
-| 1 | 1 | `PROTOCOL_VERSION` (1) |
+| 1 | 1 | `PROTOCOL_VERSION` (3 on this firmware; 2 on a device that has not been updated) |
 | 2 | 3 | firmware major, minor, patch |
 | 5 | 1 | unit_id |
 | 6 | 1 | IMUs present (bit = sensor_id) |
@@ -85,3 +86,13 @@ Status record (16 bytes), notified every 2 s and on change:
 
 Time pong (13 bytes): type = 0x06, `host_us` uint64 echoed, `t_ms` uint32 at reception. The hub tracks
 `offset = host_rx_time - t_ms` (lower envelope) and uses the pong round trip to bound it.
+
+Power record (6 bytes), type = 0x07, notified with the status record. A v2 device never sends it. Both flag bits are 0 when no divider is fitted (unavailable, not a full or empty cell).
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 1 | type = 0x07 |
+| 1 | 1 | flags: bit0 warn, bit1 critical |
+| 2 | 1 | power state: 0 run, 1 slow advertising, 2 light sleep |
+| 3 | 1 | TX power, dBm, int8 |
+| 4 | 2 | idle timeout, seconds, uint16 (0 = the idle policy is off) |

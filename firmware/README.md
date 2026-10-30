@@ -8,6 +8,8 @@ The XIAO on each pod reads BNO085 game-rotation quaternions (no magnetometer) an
 |---|---|---|
 | `AURI_UNIT` | 1 | 1 arm, 2 trunk |
 | `AURI_HAS_BATTERY_DIVIDER` | 0 | 1 only when the 100k/100k divider is on D1. Otherwise battery is unavailable |
+| `AURI_BAT_WARN_MV` / `AURI_BAT_STOP_MV` | 3500 / 3350 | PLACEHOLDER until the brownout voltage is measured. Used only when the divider flag is 1 |
+| `AURI_WAKE_BTN` | 0 | 1 when a momentary button on D2 wakes light sleep. Leave 0 if BNO INT is already on D2 |
 | `AURI_BNO_RST_WIRED` | 0 | 1 when BNO RST is wired to D3 |
 | `AURI_TEST_PATTERN` | 0 | 1: if no IMU answers, send `valid=0` packets on sensor 15 so the BLE link can be tested |
 

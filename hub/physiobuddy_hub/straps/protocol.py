@@ -1,6 +1,7 @@
-"""Decoder for the Auri strap BLE protocol v2 (contract: firmware/protocol/PROTOCOL.md; firmware side: firmware/auri_strap/src/auri_ble.h).
+"""Decoder for the Auri strap BLE protocol v3 (contract: firmware/protocol/PROTOCOL.md; firmware side: firmware/auri_strap/src/auri_ble.h).
 
 Pure Python, no BLE dependency, so the hub and tests can import it. Quaternions are (w, x, y, z).
+A v2 status record (protocol byte 2, no type 0x07) still decodes. Nothing here requires v3.
 """
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ import struct
 from dataclasses import dataclass
 from typing import Optional
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 SERVICE_UUID = "3c3ff578-acd0-46f5-a868-3ef18783e0b1"
 IMU_DATA_UUID = "55b3d211-8c74-4650-9156-6b55c5d4384a"
@@ -19,7 +20,9 @@ STATUS_UUID = "25fc04e0-6984-40dd-a21c-f6d007e20fcd"
 DEVICE_NAMES = {1: "AURI-ARM", 2: "AURI-TRUNK"}
 SENSOR_NAMES = {0: "upper_arm", 1: "forearm", 2: "trunk"}  # the hub's IMU_SENSORS names
 
-CMD_TARE, CMD_HAPTIC, CMD_RATE, CMD_STREAM, CMD_IMU_RESET, CMD_TIME_PING = 0x01, 0x02, 0x03, 0x04, 0x05, 0x06
+CMD_TARE, CMD_HAPTIC, CMD_RATE, CMD_STREAM, CMD_IMU_RESET, CMD_TIME_PING, CMD_POWER = (
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07)
+PWR_RUN, PWR_SLOW, PWR_LIGHT = 0, 1, 2
 
 
 @dataclass(frozen=True)
@@ -66,6 +69,37 @@ class Pong:
     t_ms: int
 
 
+@dataclass(frozen=True)
+class Power:
+    """STATUS type 0x07. Absent on v2 firmware; the hub treats that as unknown, not as a fault."""
+
+    flags: int
+    low: bool       # bit0, firmware warn
+    critical: bool  # bit1, firmware reports-off
+    state: int      # 0 run, 1 slow advertising, 2 light sleep
+    tx_power_dbm: int
+    idle_timeout_s: int
+
+
+def battery_pct(mv: Optional[int]) -> Optional[int]:
+    """3300 mV = 0, 4200 mV = 100, clamped, integer division as in the firmware. None if mv is missing."""
+    if not mv:
+        return None
+    if mv >= 4200:
+        return 100
+    if mv <= 3300:
+        return 0
+    return (mv - 3300) * 100 // 900
+
+
+def battery_low(mv: Optional[int]) -> Optional[bool]:
+    """True at 15% or below. None when the millivolt reading is unavailable (None or 0)."""
+    pct = battery_pct(mv)
+    if pct is None:
+        return None
+    return pct <= 15
+
+
 def _bits(mask: int) -> tuple[int, ...]:
     return tuple(i for i in range(8) if mask >> i & 1)
 
@@ -95,12 +129,17 @@ def decode_raw(data: bytes) -> RawSample:
     return RawSample(ident >> 4, ident & 0x0F, seq, t_ms, gyro, grav)
 
 
-def decode_status(data: bytes) -> Status | Pong:
+def decode_status(data: bytes) -> Status | Pong | Power:
     if data[:1] == b"\x06":
         if len(data) != 13:
             raise ValueError(f"time pong must be 13 bytes, got {len(data)}")
         host_us, t_ms = struct.unpack("<QI", data[1:])
         return Pong(host_us, t_ms)
+    if data[:1] == b"\x07":
+        if len(data) != 6:
+            raise ValueError(f"power record must be 6 bytes, got {len(data)}")
+        _kind, flags, state, tx, idle_s = struct.unpack("<BBBbH", data)
+        return Power(flags, bool(flags & 1), bool(flags & 2), state, tx, idle_s)
     if len(data) != 16 or data[0] != 0x01:
         raise ValueError("unknown STATUS record")
     _, proto, ma, mi, pa, unit, present, ok, mv, i2c, stream, rate, hap, drops = struct.unpack("<8BHH4B", data)

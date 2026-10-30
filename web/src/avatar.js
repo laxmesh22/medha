@@ -20,6 +20,8 @@ export const MODELS = {
 const BONE_NAMES = {
   hips: ['mixamorigHips', 'Hips', 'Bip01_Pelvis', 'PB_Pelvis'],
   spine: ['mixamorigSpine', 'Spine', 'Bip01_Spine', 'PB_Thorax'],
+  // Chest only. On this rig the thighs are children of the spine, so aiming that bone throws the legs.
+  spine1: ['mixamorigSpine1', 'Spine1', 'Bip01_Spine1', 'PB_Chest'],
   neck: ['mixamorigNeck', 'Neck', 'Bip01_Neck', 'PB_Neck'],
   head: ['mixamorigHead', 'Head', 'Bip01_Head', 'PB_Head'],
   rShoulder: ['mixamorigRightShoulder', 'RightShoulder', 'Bip01_R_Clavicle', 'PB_Girdle_R'],
@@ -69,7 +71,7 @@ export class Avatar {
     this.bones = {};
     for (const [key, names] of Object.entries(BONE_NAMES)) {
       this.bones[key] = names.map((n) => root.getObjectByName(n)).find(Boolean);
-      if (!this.bones[key]) throw new Error(`avatar rig is missing bone "${key}"`);
+      if (!this.bones[key] && key !== 'spine1') throw new Error(`avatar rig is missing bone "${key}"`);
     }
 
     // Face the viewer (+Z): a model facing +Z has its right shoulder at -X.
@@ -88,13 +90,18 @@ export class Avatar {
     root.position.sub(mid);
     root.updateMatrixWorld(true);
     this.rest = new Map();
-    for (const bone of Object.values(this.bones)) this.rest.set(bone, bone.quaternion.clone());
+    for (const bone of Object.values(this.bones)) {
+      if (bone) this.rest.set(bone, bone.quaternion.clone());
+    }
     this.restRoot = root.quaternion.clone();
 
-    // Start with arms down instead of the T-pose.
+    // Start with arms down instead of the T-pose. Strap posing resets to this, not the T-pose.
     this.targets = new Map();
     this.solve(null);
     for (const [bone, q] of this.targets) bone.quaternion.copy(q);
+    this.stand = new Map();
+    for (const [bone, q] of this.targets) this.stand.set(bone, q.clone());
+    this.standRoot = root.quaternion.clone();
     root.updateMatrixWorld(true);
     this.footY = new THREE.Box3().setFromObject(root).min.y;
   }
@@ -116,6 +123,40 @@ export class Avatar {
     const parent = bone.parent.getWorldQuaternion(new THREE.Quaternion()).invert();
     bone.quaternion.copy(parent.multiply(world));
     bone.updateMatrixWorld(true);
+  }
+
+  // Pose the figure from strap directions when the phone is forwarding samples.
+  // The camera keypoints stay on the skeleton overlay as the check.
+  solveStrap(pose) {
+    const B = this.bones;
+    const saved = new Map([...this.rest.keys()].map((k) => [k, k.quaternion.clone()]));
+    const savedRoot = this.root.quaternion.clone();
+    const down = new THREE.Vector3(0, -1, 0);
+    const dir = (v) => (v && v.length === 3 && v.some((n) => n !== 0) ? new THREE.Vector3(v[0], v[1], v[2]) : null);
+    const trunk = dir(pose?.trunk);
+    const upper = dir(pose?.upper_arm);
+    const fore = dir(pose?.forearm);
+    const right = pose?.side !== 'left';
+
+    this.root.quaternion.copy(this.standRoot);
+    this.root.updateMatrixWorld(true);
+    for (const [bone, q] of this.stand) bone.quaternion.copy(q);
+    this.root.updateMatrixWorld(true);
+
+    // Lean the chest only. The spine bone on this rig also parents both thighs.
+    const chest = B.spine1 || null;
+    if (trunk && chest) this.aim(chest, B.neck, trunk);
+    const armB = right ? B.rArm : B.lArm;
+    const foreB = right ? B.rFore : B.lFore;
+    const handB = right ? B.rHand : B.lHand;
+    this.aim(armB, foreB, upper || down);
+    this.aim(foreB, handB, fore || upper || down);
+
+    for (const bone of this.rest.keys()) this.targets.set(bone, bone.quaternion.clone());
+    this.targetRoot = this.root.quaternion.clone();
+    for (const [bone, q] of saved) bone.quaternion.copy(q);
+    this.root.quaternion.copy(savedRoot);
+    this.root.updateMatrixWorld(true);
   }
 
   // Compute target bone rotations from keypoints (display frame). kp = null -> neutral standing pose.
@@ -156,11 +197,11 @@ export class Avatar {
     this.root.updateMatrixWorld(true);
   }
 
-  // Smoothly follow targets (display smoothing only).
-  step(dt) {
-    const k = 1 - Math.exp(-dt * 14);
-    for (const [bone, q] of this.targets) bone.quaternion.slerp(q, k);
-    if (this.targetRoot) this.root.quaternion.slerp(this.targetRoot, k);
+  // The hub's --pose-smoothing is the only display follow. A second slerp here
+  // sat about 70 ms behind the measurement.
+  step(_dt) {
+    for (const [bone, q] of this.targets) bone.quaternion.copy(q);
+    if (this.targetRoot) this.root.quaternion.copy(this.targetRoot);
   }
 
   armBones(side) {

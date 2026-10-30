@@ -61,6 +61,7 @@ def create_app(pipeline, status: dict) -> FastAPI:
             "fps": state["fps"] if state else 0.0,
             "debug_video": pipeline.debug_video,
             "camera_preview": bool(getattr(pipeline.source, "preview", False)),
+            "pose_smoothing": getattr(pipeline, "pose_smoothing", "light"),
         }
         straps = pipeline.strap_status()
         if straps is not None:
@@ -137,28 +138,34 @@ def create_app(pipeline, status: dict) -> FastAPI:
     @app.post("/api/straps/reconnect")
     def strap_reconnect():
         """Drop the BLE sessions so they reconnect. Does not touch the camera thread."""
-        if pipeline.straps is None:
+        link = pipeline.strap_source() or getattr(pipeline, "phone", None)
+        if link is None:
             return JSONResponse({"ok": False, "reason": "straps are off"}, status_code=409)
-        pipeline.straps.request_reconnect()
+        reconnect = getattr(link, "request_reconnect", None)
+        if reconnect is not None:
+            reconnect()
         return {"ok": True}
 
     @app.get("/api/straps/calibration")
     def strap_calibration():
-        if pipeline.straps is None:
+        link = pipeline.strap_source() or getattr(pipeline, "phone", None)
+        if link is None:
             return {"enabled": False, "state": "none", "time": None, "sensors": []}
         return {"enabled": True, **pipeline.calibration_view()}
 
     @app.post("/api/straps/calibrate/npose")
     async def strap_npose():
-        if pipeline.straps is None:
+        link = pipeline.strap_source() or getattr(pipeline, "phone", None)
+        if link is None:
             return JSONResponse({"ok": False, "reason": "straps are off"}, status_code=409)
-        return pipeline.finish_npose(await collect_samples(pipeline.straps, 2.0))
+        return pipeline.finish_npose(await collect_samples(link, 3.0))
 
     @app.post("/api/straps/calibrate/raise")
     async def strap_raise():
-        if pipeline.straps is None:
+        link = pipeline.strap_source() or getattr(pipeline, "phone", None)
+        if link is None:
             return JSONResponse({"ok": False, "reason": "straps are off"}, status_code=409)
-        return pipeline.finish_raise(await collect_samples(pipeline.straps, 4.0))
+        return pipeline.finish_raise(await collect_samples(link, 4.0))
 
     @app.post("/api/calibrate/rest")
     async def calibrate_rest(seconds: float = 2.0):
@@ -166,6 +173,18 @@ def create_app(pipeline, status: dict) -> FastAPI:
         pipeline.start_rest_capture()
         await asyncio.sleep(max(0.5, min(seconds, 5.0)))
         return pipeline.rest_capture_result()
+
+    @app.websocket("/ws/phone")
+    async def ws_phone(ws: WebSocket):
+        """The phone forwards raw strap samples. Angles are not computed here."""
+        await ws.accept()
+        try:
+            while True:
+                msg = await ws.receive_json()
+                if isinstance(msg, dict):
+                    pipeline.phone.push(msg)
+        except (WebSocketDisconnect, RuntimeError):
+            return
 
     @app.websocket("/ws/live")
     async def ws_live(ws: WebSocket):

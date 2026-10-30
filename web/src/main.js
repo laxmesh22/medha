@@ -368,7 +368,7 @@ function render(state) {
   $('#fps').textContent = `${state.fps} fps · ${state.proc_ms} ms`;
   const g = state.guidance || [];
   const guide = $('#guidance');
-  const hint = state.auri_cv && state.auri_cv.hint;
+  const hint = state.close_hint || (state.auri_cv && state.auri_cv.hint);
   guide.textContent = hint || g.map((c) => GUIDANCE[c] || c).join(' · ');
   guide.dataset.ok = !hint && g.length === 1 && g[0] === 'OK' ? 'yes' : 'no';
 
@@ -418,7 +418,18 @@ function render(state) {
 
   const kp = ui.mirror ? mirrorKeypoints(state.keypoints) : state.keypoints;
   points.update(kp);
-  if (avatar && state.keypoints) avatar.solve(kp);
+  const pose = state.strap_pose;
+  if (avatar && pose && (pose.trunk || pose.upper_arm || pose.forearm)) {
+    const flip = (v) => (!v || !ui.mirror ? v : [-v[0], v[1], v[2]]);
+    avatar.solveStrap({
+      side: pose.side,
+      trunk: flip(pose.trunk),
+      upper_arm: flip(pose.upper_arm),
+      forearm: flip(pose.forearm),
+    });
+  } else if (avatar && state.keypoints) {
+    avatar.solve(kp);
+  }
   if (anatomy && state.keypoints) anatomy.solve(kp);
 }
 
@@ -467,7 +478,8 @@ const STRAP_ROWS = [
   ['trunk_lean_sagittal', 'Trunk lean, front/back'],
   ['trunk_lean_lateral', 'Trunk lean, sideways'],
 ];
-const STRAP_CAL = { none: 'Not calibrated', npose: 'N-pose saved', 'npose+raise': 'N-pose and forward raise' };
+const STRAP_CAL = { none: 'Not calibrated', npose: 'N-pose ok', raise: 'raise ok', 'npose+raise': 'N-pose and forward raise' };
+const STRAP_SLOT_LABEL = { upper_arm: 'Upper arm', forearm: 'Forearm', trunk: 'Waist' };
 
 function deg(m) {
   return m && m.value != null ? `${Math.round(m.value)}°` : 'unavailable';
@@ -511,18 +523,35 @@ function renderStraps(state) {
   if (!state.straps) { card.hidden = true; return; }
   card.hidden = false;
   const devs = state.straps.devices || [];
-  $('#straps-link').textContent = devs.length
-    ? devs.map((d) => {
+  const live = devs.filter((d) => d.connected);
+  $('#straps-link').textContent = live.length
+    ? live.map((d) => {
       const who = [d.name || d.address || 'strap', d.slot].filter(Boolean).join(' ');
       const fault = d.hardware ? ` · ${d.hardware}` : '';
-      if (!d.connected) return `${who} · off · searching${fault}`;
       const hz = d.packet_rate_hz == null ? '' : ` · ${Math.round(d.packet_rate_hz)} Hz`;
-      return `${who} · connected${hz}${fault}`;
-    }).join('\n')
-    : 'No strap connected';
-  const cal = state.straps.calibration || { state: 'none' };
+      const bat = d.battery_pct == null ? ' · battery unavailable'
+        : (d.battery_low ? ` · ${d.battery_pct}% · low battery` : ` · ${d.battery_pct}%`);
+      return `${who} · connected${hz}${bat}${fault}`;
+    }).join(' · ')
+    : (state.straps.mode === 'phone' ? 'Waiting for the phone' : 'No strap connected');
+  const cal = state.straps.calibration || { state: 'none', slots: [] };
   const sensors = (cal.sensors || []).join(', ');
   $('#straps-cal').textContent = `${STRAP_CAL[cal.state] || cal.state}${sensors ? ` · ${sensors}` : ''}`;
+  const list = $('#straps-slots');
+  list.innerHTML = '';
+  const bySlot = {};
+  for (const d of devs) if (d.slot) bySlot[d.slot] = d;
+  for (const name of ['upper_arm', 'forearm', 'trunk']) {
+    const row = document.createElement('li');
+    const dev = bySlot[name];
+    const slotCal = (cal.slots || []).find((s) => s.sensor === name);
+    const mark = STRAP_CAL[slotCal?.state] || 'not calibrated';
+    const who = dev
+      ? `${dev.connected ? 'connected' : 'searching'}${dev.address ? ` · ${dev.address.slice(-5)}` : ''}`
+      : 'no strap';
+    row.innerHTML = `<span>${STRAP_SLOT_LABEL[name]}</span><b>${mark}</b><span>${who}</span>`;
+    list.appendChild(row);
+  }
   const box = $('#straps-compare');
   box.innerHTML = '';
   const cam = state.angles;
@@ -543,7 +572,7 @@ function renderStraps(state) {
 
 async function strapCalibrate(path, busy) {
   const msg = $('#straps-msg');
-  const buttons = ['#straps-npose', '#straps-raise'].map((id) => $(id));
+  const buttons = ['#straps-npose', '#straps-raise', '#straps-guided'].map((id) => $(id));
   buttons.forEach((b) => { b.disabled = true; });
   msg.hidden = false;
   msg.textContent = busy;
@@ -554,9 +583,48 @@ async function strapCalibrate(path, busy) {
     result = { ok: false, reason: 'Could not reach the station' };
   }
   buttons.forEach((b) => { b.disabled = false; });
-  if (result.ok) { msg.hidden = true; msg.textContent = ''; return; }
+  if (result.ok) { msg.hidden = true; msg.textContent = ''; return result; }
   msg.hidden = false;
   msg.textContent = result.reason || 'Calibration failed';
+  return result;
+}
+
+function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+async function guidedStraps() {
+  const msg = $('#straps-msg');
+  const buttons = ['#straps-npose', '#straps-raise', '#straps-guided'].map((id) => $(id));
+  buttons.forEach((b) => { b.disabled = true; });
+  msg.hidden = false;
+  for (let i = 5; i >= 1; i -= 1) {
+    msg.textContent = `Wear the sensors as they sit. Stand still, arms by your sides. Locking that position in ${i}`;
+    await sleep(1000);
+  }
+  msg.textContent = 'Hold still…';
+  let npose;
+  try {
+    npose = await fetch('/api/straps/calibrate/npose', { method: 'POST' }).then((r) => r.json());
+  } catch {
+    npose = { ok: false, reason: 'Could not reach the station' };
+  }
+  if (!npose.ok) {
+    msg.textContent = npose.reason || 'N-pose was not accepted';
+    buttons.forEach((b) => { b.disabled = false; });
+    return;
+  }
+  for (let i = 5; i >= 1; i -= 1) {
+    msg.textContent = `Raise the straight arm forward, toward the camera, not out to the side. Starting in ${i}`;
+    await sleep(1000);
+  }
+  msg.textContent = 'Raise the straight arm slowly forward, toward the camera…';
+  let raise;
+  try {
+    raise = await fetch('/api/straps/calibrate/raise', { method: 'POST' }).then((r) => r.json());
+  } catch {
+    raise = { ok: false, reason: 'Could not reach the station' };
+  }
+  buttons.forEach((b) => { b.disabled = false; });
+  msg.textContent = raise.ok ? 'N-pose ok, raise ok' : (raise.reason || 'Raise was not accepted');
 }
 
 // ---------------------------------------------------------------- controls
@@ -660,8 +728,9 @@ $('#mic-btn').addEventListener('click', (e) => {
 });
 document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click', () => agent.hear(b.dataset.ask)));
 
-$('#straps-npose').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/npose', 'Stand still, arms by your sides…'));
-$('#straps-raise').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/raise', 'One slow straight-arm forward raise…'));
+$('#straps-npose').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/npose', 'Wear the sensors as they sit. Stand still, arms by your sides…'));
+$('#straps-raise').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/raise', 'Raise the straight arm forward, toward the camera. Not out to the side…'));
+$('#straps-guided').addEventListener('click', () => guidedStraps());
 
 $('#rest-btn').addEventListener('click', async (e) => {
   const btn = e.currentTarget;

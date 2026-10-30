@@ -255,6 +255,15 @@ class _AuthGateState extends State<AuthGate> {
 Row-level security means a patient only ever reads and writes their **own** rows. The database knows who they are
 from the token's `sub` (`current_sub()` in `schema.sql`). The app never sends a user ID for that.
 
+`patients` is the account (`email` from the Auth0 token, `last_seen_at`, `app_version`, plus the latest date of
+birth, sex, affected side and conditions). Each submitted intake is a new `patient_intake` row (`version` 1, 2, …).
+`patient_consents` records the privacy text (`kind = privacy`) and the share agreement (`kind = share_with_clinician`).
+`patient_settings` holds `language` (`en` or `hi`) and `text_size` (`small`, `medium` or `large`). Voice, dark mode
+and the reminder time stay on the phone. `patients.intake` is kept for one release and the app no longer writes it.
+`session_exercises.reps_rejected` is null when the phone cannot classify the rep. `sessions.ended_early` is true
+when the patient stops before the plan is finished.
+Run `clinician/supabase/migrations/20261030_patient_app.sql`, then `20261030b_patient_tables.sql`, before these writes succeed.
+
 `lib/profile.dart`:
 ```dart
 import 'package:flutter/material.dart';
@@ -287,6 +296,14 @@ Future<Map<String, dynamic>> createPatient({
 Future<String> linkToPhysio(String code) async =>
     await db.rpc('link_patient_with_code', params: {'p_code': code.trim().toUpperCase()}) as String;
 
+/// Before linking, the patient cannot read the clinicians table. Call this once when they submit a
+/// well-formed `AU-` code. An unknown code returns no row. Do not call it on each keystroke.
+Future<Map<String, dynamic>?> previewPhysio(String code) async {
+  final rows = await db.rpc('preview_clinician_by_code', params: {'code': code.trim().toUpperCase()});
+  if (rows is List && rows.isNotEmpty && rows.first is Map) return Map<String, dynamic>.from(rows.first as Map);
+  return null;
+}
+
 /// The physio(s) I'm linked to, with the video room of each link.
 Future<List<Map<String, dynamic>>> myLinks() =>
     db.from('care_links').select('id, status, video_room, clinician_id, clinicians(full_name, clinic, city)')
@@ -307,6 +324,7 @@ Future<void> saveSession({
   required DateTime startedAt,
   required int durationS,
   int? painBefore, int? painAfter,          // 0-10, patient-reported
+  bool? endedEarly,
   required List<Map<String, dynamic>> exercises,
 }) async {
   final s = await db.from('sessions').insert({
@@ -317,13 +335,14 @@ Future<void> saveSession({
     'source': 'home',                       // 'home' (phone) | 'station' (clinic station)
     'pain_before': painBefore,
     'pain_after': painAfter,
+    'ended_early': endedEarly,              // true if they stopped early; null if unknown
   }).select('id').single();
   await db.from('session_exercises').insert([
     for (final e in exercises) {
       'session_id': s['id'],
       'exercise_id': e['exercise_id'],      // 'flexion' | 'abduction' | 'external_rotation' | ...
       'reps_counted': e['reps_counted'] ?? 0,
-      'reps_rejected': e['reps_rejected'] ?? 0,
+      'reps_rejected': e['reps_rejected'],  // null when the phone cannot classify; never a fake 0
       'peak_deg': e['peak_deg'],            // from geometry only; null = unavailable, NEVER 0
       'median_deg': e['median_deg'],
       'flags': e['flags'] ?? <String>[],    // e.g. ['TRUNK_LEAN_SAGITTAL']

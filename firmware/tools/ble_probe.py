@@ -171,6 +171,8 @@ async def main() -> int:
             if fut is not None and not fut.done():
                 fut.set_result((time.perf_counter(), obj))
             print(f"pong t_ms={obj.t_ms}")
+        elif isinstance(obj, auri_ble.Power):
+            print(f"POWER flags={obj.flags:#x} state={obj.state} tx={obj.tx_power_dbm} dBm")
         else:
             statuses.append(obj)
             print(f"STATUS notify_drops={obj.notify_drops} i2c_errors={obj.i2c_errors} rate={obj.rate_hz}")

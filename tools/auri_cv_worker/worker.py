@@ -357,7 +357,14 @@ def run(camera: int, side: str, fps: float, preview: bool, exposure: str = "auto
         logging.error("could not open webcam index %s", camera)
         return 1
     period_ms = max(1, int(round(1000.0 / fps)))
-    landmarker = AuriPoseLandmarker(running_mode=VisionTaskRunningMode.VIDEO)
+    # VIDEO mode tracks across frames. 0.5 is the floor; a higher bar resets the pose
+    # whenever the person leans in close.
+    landmarker = AuriPoseLandmarker(
+        running_mode=VisionTaskRunningMode.VIDEO,
+        min_detection_confidence=0.5,
+        min_presence_confidence=0.5,
+        min_tracking_confidence=0.5,
+    )
     pipeline = ShoulderAnalysisPipeline(laterality=side)
     logging.info("webcam %s open, side %s, %.0f fps, preview %s, exposure request %s, jpeg %s",
                  camera, side, fps, "on" if preview else "off", exposure, JPEG_QUALITY)
@@ -396,7 +403,7 @@ def run(camera: int, side: str, fps: float, preview: bool, exposure: str = "auto
     frame_index = 0
     last_preview = 0.0
     seen = 0
-    acc = {"read": 0.0, "fit": 0.0, "infer": 0.0, "send": 0.0, "bright": 0.0}
+    acc = {"read": 0.0, "fit": 0.0, "infer": 0.0, "detect": 0.0, "post": 0.0, "send": 0.0, "bright": 0.0}
     try:
         while True:
             with holder["cond"]:
@@ -429,8 +436,11 @@ def run(camera: int, side: str, fps: float, preview: bool, exposure: str = "auto
             t_inf = time.perf_counter()
             obs = landmarker.detect_video_frame(rgb, timestamp_ms=frame_index * period_ms,
                                                  frame_index=frame_index)
+            detect_ms = (time.perf_counter() - t_inf) * 1000.0
+            t_post = time.perf_counter()
             result = pipeline.process(obs)
-            infer_ms = (time.perf_counter() - t_inf) * 1000.0
+            post_ms = (time.perf_counter() - t_post) * 1000.0
+            infer_ms = detect_ms + post_ms
             t_send = time.perf_counter()
             _write_line({
                 "t_ms": round(captured_ms, 1),
@@ -444,6 +454,8 @@ def run(camera: int, side: str, fps: float, preview: bool, exposure: str = "auto
             acc["read"] += read_ms
             acc["fit"] += fit_ms
             acc["infer"] += infer_ms
+            acc["detect"] += detect_ms
+            acc["post"] += post_ms
             acc["send"] += send_ms
             acc["bright"] += float(small.mean())
             frame_index += 1
@@ -455,11 +467,12 @@ def run(camera: int, side: str, fps: float, preview: bool, exposure: str = "auto
                     stages["penc"] = stages["psend"] = 0.0
                     stages["pn"] = 0
                 logging.info(
-                    "stage read %.1f fit %.1f infer %.1f send %.1f preview_enc %.1f preview_send %.1f bright %.1f (n=30 previews=%d)",
-                    acc["read"] / 30.0, acc["fit"] / 30.0, acc["infer"] / 30.0, acc["send"] / 30.0,
+                    "stage read %.1f fit %.1f detect %.1f post %.1f infer %.1f send %.1f preview_enc %.1f preview_send %.1f bright %.1f (n=30 previews=%d)",
+                    acc["read"] / 30.0, acc["fit"] / 30.0, acc["detect"] / 30.0, acc["post"] / 30.0,
+                    acc["infer"] / 30.0, acc["send"] / 30.0,
                     (penc / pn) if pn else 0.0, (psend / pn) if pn else 0.0, acc["bright"] / 30.0, pn,
                 )
-                acc = {"read": 0.0, "fit": 0.0, "infer": 0.0, "send": 0.0, "bright": 0.0}
+                acc = {"read": 0.0, "fit": 0.0, "infer": 0.0, "detect": 0.0, "post": 0.0, "send": 0.0, "bright": 0.0}
     finally:
         stop_cap.set()
         if preview:

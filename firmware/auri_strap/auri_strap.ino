@@ -1,4 +1,4 @@
-// Auri strap firmware: BNO085 game rotation vector (+ calibrated gyro + gravity) over BLE, protocol v1.
+// Auri strap firmware: BNO085 game rotation vector (+ calibrated gyro + gravity) over BLE, protocol v3.
 // Contract: firmware/protocol/PROTOCOL.md. Spec: agenthandoff.md §7. Pins and unit: board.h.
 //
 // Rules this firmware keeps (handoff §0 / §7):
@@ -11,6 +11,8 @@
 #include <Wire.h>
 #include <NimBLEDevice.h>
 #include <Adafruit_DRV2605.h>
+#include <esp_sleep.h>
+#include <driver/gpio.h>
 #include "board.h"
 #include "src/bno_lite.h"  // own SH-2 driver: the SparkFun/Adafruit ones allow only one BNO08x per MCU
 
@@ -50,14 +52,30 @@ static NimBLECharacteristic *chImu = nullptr, *chRaw = nullptr, *chStatus = null
 static volatile bool connected = false;
 
 // Commands arrive in the BLE task; loop() executes them.
-static volatile bool cmdTare = false, cmdStatus = false;
+static volatile bool cmdTare = false, cmdStatus = false, cmdWake = false, cmdPowerPending = false;
 static volatile uint8_t cmdHaptic = 0, cmdRate = 0, cmdStream = 0xFF, cmdResetMask = 0;
+static volatile uint8_t cmdPowerMode = 0, cmdPowerMinutes = 0;
 static volatile bool pongPending = false;
 static volatile uint64_t pongHostUs = 0;
 static volatile uint32_t pongTms = 0;
 
 static uint16_t testSeq = 0;
 static uint32_t lastTestMs = 0, lastDetectMs = 0, lastStatusMs = 0, lastStatusKey = 0;
+
+// Reports are held for a low cell or for the idle policy. Silence recovery must not turn them back on.
+static bool reportsHeld = false;
+static bool batteryStop = false;
+static uint8_t batFlags = 0;
+static uint16_t lastBatMv = 0;
+static bool idleLatched = false;
+static uint8_t idleTimeoutMin = 0;  // 0 = idle policy off
+static uint8_t powerState = PWR_RUN;
+static uint32_t discSince = 0;
+static bool wasConnected = false;
+static const int8_t TX_DBM = 9;  // matches NimBLEDevice::setPower(ESP_PWR_LVL_P9)
+static const uint16_t ADV_SLOW = 1600;  // 1600 * 0.625 ms = 1 s
+static const uint32_t IDLE_AWAKE_MS = 500;
+static const uint32_t IDLE_SLEEP_US = 500000;
 
 // ---------------------------------------------------------------------------------------------------------------------
 static bool i2cAck(uint8_t addr) {
@@ -87,7 +105,7 @@ static void hardResetImus() {
 static bool startImu(Imu& m) {
   if (!i2cAck(m.slot.address)) return false;
   if (!m.dev.begin(Wire, m.slot.address)) return false;
-  enableReports(m);
+  if (!reportsHeld) enableReports(m);
   m.present = true;
   m.lastSampleMs = millis();
   Serial.printf("imu sensor %u at 0x%02X: started (part %lu, sw %u.%u.%u build %lu, reset cause %u)\n",
@@ -153,7 +171,7 @@ static void sendImuPacket(Imu& m, bool valid) {
 
 // Drain every event the sensor has queued; send one packet per new game-rotation-vector sample.
 static void pollImu(Imu& m) {
-  if (!m.present) return;
+  if (!m.present || reportsHeld) return;
   uint8_t got = m.dev.poll();
   if (m.dev.takeReset()) {  // the BNO rebooted on its own: reports are gone, re-enable them
     Serial.printf("imu sensor %u reset (by us or by itself): re-enabling reports\n", m.slot.sensorId);
@@ -203,7 +221,12 @@ static uint8_t batteryPercent(uint16_t mv) {  // rough LiPo curve, 3.3 V empty, 
   return (uint8_t)((mv - 3300) * 100 / 900);
 }
 
+static void updateBattery();
+static void sendPower();
+
 static void sendStatus() {
+  updateBattery();
+  sendPower();  // notified first; the 16-byte record is written last so a GATT read still returns it
   StatusRecord s{};
   s.fwMajor = FW_MAJOR;
   s.fwMinor = FW_MINOR;
@@ -213,11 +236,11 @@ static void sendStatus() {
     if (imus[i].present) s.present |= 1 << imus[i].slot.sensorId;
     if (imus[i].streaming) s.ok |= 1 << imus[i].slot.sensorId;
   }
-  s.batteryMv = batteryMv();
+  s.batteryMv = lastBatMv;
   uint32_t errs = i2cErrors;
   for (size_t i = 0; i < IMU_COUNT; i++) errs += imus[i].dev.i2cErrors;
   s.i2cErrors = errs > 0xFFFF ? 0xFFFF : (uint16_t)errs;
-  s.streaming = streamOn;
+  s.streaming = streamOn && !reportsHeld;
   s.rateHz = rateHz;
   s.haptics = hapticsPresent;
   s.notifyDrops = notifyDrops > 0xFF ? 0xFF : (uint8_t)notifyDrops;
@@ -252,10 +275,145 @@ static void playHaptic(uint8_t pattern) {
   drv.go();
 }
 
+static void disableReports(Imu& m) {
+  m.dev.enable(BnoLite::R_GAME_RV, 0);
+  m.dev.enable(BnoLite::R_GYRO_CAL, 0);
+  m.dev.enable(BnoLite::R_GRAVITY, 0);
+  m.streaming = false;
+}
+
+static void holdReports(bool hold) {
+  if (hold == reportsHeld) return;
+  reportsHeld = hold;
+  for (size_t i = 0; i < IMU_COUNT; i++) {
+    if (!imus[i].present) continue;
+    if (hold) disableReports(imus[i]);
+    else enableReports(imus[i]);
+  }
+}
+
+static void syncReports() { holdReports(batteryStop || idleLatched); }
+
+static void applyAdv(bool slow) {
+  NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+  if (adv == nullptr) return;
+  adv->setAdvertisingInterval(slow ? ADV_SLOW : 0);  // 0 = the stack default used at boot
+  if (!connected) {
+    adv->stop();
+    adv->start();
+  }
+}
+
+static void enterIdle() {
+  if (idleLatched) return;
+  idleLatched = true;
+  powerState = PWR_SLOW;
+  syncReports();
+  applyAdv(true);
+  cmdStatus = true;
+  Serial.println("idle: reports off, advertising 1 s");
+}
+
+static void leaveIdle() {
+  if (!idleLatched && powerState == PWR_RUN) return;
+  idleLatched = false;
+  powerState = PWR_RUN;
+  discSince = millis();
+  applyAdv(false);
+  syncReports();
+  cmdStatus = true;
+  Serial.println("idle: awake");
+}
+
+// Divider-off builds never set a flag and never stop the sensors. 0 mV stays "unavailable".
+static void updateBattery() {
+#if !AURI_HAS_BATTERY_DIVIDER
+  lastBatMv = 0;
+  batFlags = 0;
+  if (batteryStop) {
+    batteryStop = false;
+    syncReports();
+  }
+#else
+  uint16_t mv = batteryMv();
+  lastBatMv = mv;
+  if (mv == 0) {
+    batFlags = 0;
+    if (batteryStop) {
+      batteryStop = false;
+      syncReports();
+    }
+    return;
+  }
+  // +50 mV to release, so ADC noise around the PLACEHOLDER thresholds does not re-buzz.
+  bool warn = (batFlags & 0x01) ? mv <= (uint16_t)(AURI_BAT_WARN_MV + 50) : mv <= AURI_BAT_WARN_MV;
+  bool stop = (batFlags & 0x02) ? mv <= (uint16_t)(AURI_BAT_STOP_MV + 50) : mv <= AURI_BAT_STOP_MV;
+  uint8_t next = (warn ? 0x01 : 0) | (stop ? 0x02 : 0);
+  if ((next & 0x01) && !(batFlags & 0x01)) playHaptic(HAPTIC_WARNING);
+  bool changed = next != batFlags || stop != batteryStop;
+  batFlags = next;
+  batteryStop = stop;
+  if (changed) {
+    syncReports();
+    cmdStatus = true;
+  }
+#endif
+}
+
+static void sendPower() {
+  if (chStatus == nullptr) return;
+  uint8_t buf[POWER_LEN];
+  uint16_t idleS = (uint16_t)idleTimeoutMin * 60;
+  packPower(buf, batFlags, powerState, TX_DBM, idleS);
+  chStatus->setValue(buf, sizeof(buf));
+  if (connected) chStatus->notify();
+}
+
+static void serviceIdle() {
+#if AURI_WAKE_BTN
+  bool buttonDown = digitalRead(PIN_INT) == LOW;
+#else
+  bool buttonDown = false;
+#endif
+  if (buttonDown && idleLatched) leaveIdle();
+  if (connected) {
+    if (!wasConnected) cmdWake = true;
+    wasConnected = true;
+  } else if (wasConnected) {
+    wasConnected = false;
+    discSince = millis();
+  }
+  if (cmdWake) {
+    cmdWake = false;
+    leaveIdle();
+  }
+  if (!connected && !idleLatched && !buttonDown && idleTimeoutMin > 0 &&
+      (uint32_t)(millis() - discSince) >= (uint32_t)idleTimeoutMin * 60000UL) {
+    enterIdle();
+  }
+  if (!idleLatched || connected) return;
+  // The Arduino-ESP32 3.3.12 C3 NimBLE library is built with modem-sleep and automatic
+  // light-sleep off, so a long blocking sleep stops advertising. Stay awake 500 ms, sleep 500 ms.
+  static uint32_t awakeSince = 0;
+  uint32_t now = millis();
+  if (awakeSince == 0) awakeSince = now;
+  if ((uint32_t)(now - awakeSince) < IDLE_AWAKE_MS) return;
+  awakeSince = 0;
+  esp_sleep_enable_timer_wakeup(IDLE_SLEEP_US);
+  esp_sleep_enable_bt_wakeup();
+#if AURI_WAKE_BTN
+  gpio_wakeup_enable((gpio_num_t)PIN_INT, GPIO_INTR_LOW_LEVEL);
+  esp_sleep_enable_gpio_wakeup();
+#endif
+  if (esp_light_sleep_start() == ESP_OK) powerState = PWR_LIGHT;
+  awakeSince = millis();
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 class ServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* s, NimBLEConnInfo& info) override {
     connected = true;
+    cmdWake = true;  // a connection leaves idle; I2C stays in loop()
     // Windows exchanges the MTU before this callback runs, so onMTUChange may already have fired: read the current
     // value instead of resetting it (resetting to 20 kept the 37-byte path off in test 017).
     attPayload = info.getMTU() > 3 ? info.getMTU() - 3 : 20;
@@ -294,6 +452,13 @@ class CommandCallbacks : public NimBLECharacteristicCallbacks {
           pongTms = millis();  // stamp on reception, before any queueing delay
           pongHostUs = h;
           pongPending = true;
+        }
+        break;
+      case CMD_POWER:
+        if (n >= 2) {
+          cmdPowerMode = d[1];
+          cmdPowerMinutes = (d[1] == PWR_MODE_TIMEOUT && n >= 3) ? d[2] : 0;
+          cmdPowerPending = true;
         }
         break;
     }
@@ -357,6 +522,11 @@ void setup() {
                   imus[i].present ? "present" : "absent (will keep looking)");
   Serial.printf("haptics: %s; battery divider: %s\n", hapticsPresent ? "DRV2605L" : "none",
                 AURI_HAS_BATTERY_DIVIDER ? "yes" : "no (battery unavailable)");
+#if AURI_WAKE_BTN
+  pinMode(PIN_INT, INPUT_PULLUP);  // D2 to GND, external button; idle light-sleep wake
+  Serial.println("wake button: D2");
+#endif
+  discSince = millis();
 
   setupBle();
   if (chStatus) sendStatus();
@@ -369,8 +539,9 @@ void loop() {
   if (cmdRate) {
     rateHz = cmdRate < 10 ? 10 : (cmdRate > 100 ? 100 : cmdRate);
     cmdRate = 0;
-    for (size_t i = 0; i < IMU_COUNT; i++)
-      if (imus[i].present) enableReports(imus[i]);
+    if (!reportsHeld)
+      for (size_t i = 0; i < IMU_COUNT; i++)
+        if (imus[i].present) enableReports(imus[i]);
     cmdStatus = true;
   }
   if (cmdStream != 0xFF) {
@@ -382,9 +553,25 @@ void loop() {
     cmdTare = false;
     for (size_t i = 0; i < IMU_COUNT; i++)
       if (imus[i].present) {
-        enableReports(imus[i]);
+        if (!reportsHeld) enableReports(imus[i]);
         imus[i].resetFlag = true;
       }
+    cmdStatus = true;
+  }
+  if (cmdPowerPending) {
+    uint8_t mode = cmdPowerMode;
+    uint8_t minutes = cmdPowerMinutes;
+    cmdPowerPending = false;
+    if (mode == PWR_MODE_RUN) {
+      idleTimeoutMin = 0;
+      leaveIdle();
+    } else if (mode == PWR_MODE_SLEEP) {
+      enterIdle();
+    } else if (mode == PWR_MODE_TIMEOUT) {
+      idleTimeoutMin = minutes;
+      discSince = millis();
+      if (minutes == 0) leaveIdle();
+    }
     cmdStatus = true;
   }
   if (cmdResetMask) {
@@ -432,5 +619,6 @@ void loop() {
     lastStatusMs = now;
     sendStatus();
   }
+  serviceIdle();
   delay(1);
 }

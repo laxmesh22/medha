@@ -3,7 +3,21 @@
 // referral code persist in this browser (localStorage) so a demo can show prescribing.
 
 import { yearsForStorage } from "./practice";
-import type { Api, CarePlan, Clinician, ClinicianInput, Exercise, Patient, PlanItem, Session, SessionExercise, VideoCall } from "./types";
+import type { Api, CarePlan, Clinician, ClinicianInput, Exercise, Patient, PatientConsent, PatientIntake, PlanItem, Session, SessionExercise, VideoCall } from "./types";
+
+const DEMO_INTAKES: PatientIntake[] = [{
+  id: "in-meera", patient_id: "p-meera", version: 1, submitted_at: "2026-09-28T08:00:00.000Z",
+  date_of_birth: "1972-03-14", sex: "female", gender: "woman", affected_side: "right", onset: "6w_3m",
+  trigger: "gradual", trigger_note: null, main_problem: "pain", pain_now: 5, sleep: "yes",
+  hard_tasks: ["overhead", "dressing"], load: "light", load_increased: "no", load_note: null,
+  past_injury: "no", past_injury_when: null, prior_frozen: "no", conditions: ["diabetes"],
+  seen_before: "yes", seen_who: ["physio"], extra: {},
+}];
+
+const DEMO_CONSENTS: PatientConsent[] = [
+  { id: "consent-privacy", patient_id: "p-meera", kind: "privacy", version: "2026-10-draft", agreed_at: "2026-09-28T07:50:00.000Z", clinician_id: null },
+  { id: "consent-share", patient_id: "p-meera", kind: "share_with_clinician", version: "2026-10-draft", agreed_at: "2026-09-28T08:05:00.000Z", clinician_id: "c-demo" },
+];
 
 export const EXERCISES: Exercise[] = [
   { id: "flexion", name: "Forward raise (flexion)", metric: "elevation", description: "Raise the straight arm forward and up, thumb leading.", default_sets: 2, default_reps: 10, default_hold: 3 },
@@ -329,6 +343,12 @@ export function demoApi(): Api {
       const since = Date.now() - sinceDays * DAY;
       return sessions.filter((s) => (!patientId || s.patient_id === patientId) && Date.parse(s.started_at) >= since)
         .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at));
+    },
+    async listIntakes(patientId) {
+      return DEMO_INTAKES.filter((row) => !patientId || row.patient_id === patientId);
+    },
+    async listConsents(patientId) {
+      return DEMO_CONSENTS.filter((row) => !patientId || row.patient_id === patientId);
     },
     async listCalls(patientId) {
       return store.calls.filter((c) => !patientId || c.patient_id === patientId);

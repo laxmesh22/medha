@@ -38,6 +38,10 @@ hardware/cad/vendor/*.STP
 .env
 *.env.local
 
+# This laptop's strap address -> slot map (tools/identify_straps.py)
+hub/straps_slots.local.json
+hub/straps_mount.local.json
+
 # Strap firmware BLE test environment (hub venv stays in hub/.venv)
 firmware/.venv/
 

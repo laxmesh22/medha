@@ -78,9 +78,14 @@ linked to them, and a patient only their own rows.
 | Step | Patient app does | Dashboard sees |
 |---|---|---|
 | Sign up | Sign in (Auth0 or Supabase auth), then insert its own `patients` row (`auth_sub` fills itself from the token) | nothing yet |
+| Look up a code | `rpc('preview_clinician_by_code', { code })` once, before linking. Returns full name, title, clinic and city, or no row | nothing yet |
 | Link | `rpc('link_patient_with_code', { p_code })` after the patient agrees to share | patient in the list, `consent_at` |
+| Intake | Insert the next `patient_intake` version. The latest date of birth, sex, side and conditions are also written on `patients` | Medical info shows the latest version and the older ones |
+| Consent | Insert `patient_consents` (`privacy` at sign-in, `share_with_clinician` when a code is confirmed) | Medical info, read-only |
+| Settings | Upsert `patient_settings` (`language`, `text_size`) | not shown; the physio can read the row |
+| Account | Update `patients.email` (from the token), `last_seen_at` and `app_version` on each load | patient list still uses the profile columns |
 | Plan | read `care_plans` (`status = 'active'`) + `plan_items` | the clinician writes them via `publish_care_plan` |
-| Session | insert `sessions` + `session_exercises` after each session | progress charts, adherence, alerts |
+| Session | insert `sessions` (including `ended_early`) + `session_exercises` after each session | progress charts, adherence, alerts |
 | Emergency call | read `care_links.video_room` + `video_calls` (status `scheduled`); open `https://meet.jit.si/<video_room>` | starts a call, schedules a follow-up, sees past calls |
 
 Session fields the dashboard relies on:
@@ -90,7 +95,8 @@ Session fields the dashboard relies on:
 | `started_at`, `duration_s`, `source` | When, how long, `home` or `station` |
 | `pain_before`, `pain_after` | 0–10, patient-reported |
 | `session_exercises.peak_deg`, `median_deg` | Degrees from the device geometry (camera skeleton / straps). `null` = unavailable, **never 0**, never typed by the patient |
-| `reps_counted`, `reps_rejected` | Reps the coach accepted vs rejected for a compensation |
+| `ended_early` | True when the patient stopped before finishing. Null on older rows |
+| `reps_counted`, `reps_rejected` | Reps the coach accepted vs rejected. `reps_rejected` null means the phone could not classify them (not 0) |
 | `flags` | Compensations seen, e.g. `TRUNK_LEAN_SAGITTAL`, `TRUNK_LEAN_LATERAL`, `ELBOW_DRIFT`, `SHRUG`, `TOO_FAST` |
 
 Exercise ids (`flexion`, `abduction`, `external_rotation`, `internal_rotation`, `pendulum`) are the ones the station's

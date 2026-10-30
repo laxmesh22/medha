@@ -74,6 +74,58 @@ def test_forward_raise_calibration_removes_strap_spin():
     assert abs(before - 40) > 10 and abs(after - 40) < 1 and cal.forward_raise["upper_arm"]
 
 
+def test_raise_direction_sets_forward_when_the_box_is_twisted():
+    """A 90 deg twist on the strap used to turn a forward raise into a side raise."""
+    side, spin = "right", {"upper_arm": 90.0, "forearm": 90.0}
+    cal = npose(side, spin, seed=3)
+    rows = {s: [] for s in SENSORS}
+    for deg in range(20, 85, 5):
+        R = axis_angle(EZ, np.radians(deg))
+        q = wear({"trunk": np.eye(3), "upper_arm": R, "forearm": R}, side, spin, seed=3)
+        for s in SENSORS:
+            rows[s].append((q[s].tolist(), None))
+    done = cal.refine_from_raise_direction(rows)
+    assert "upper_arm" in done and "forearm" in done
+    posed = wear({"trunk": np.eye(3), "upper_arm": axis_angle(EZ, np.radians(70)),
+                  "forearm": axis_angle(EZ, np.radians(70))}, side, spin, seed=3)
+    a = StrapKinematics(cal).compute(posed)
+    assert a.movement == "flexion" and abs(a.plane_of_elevation.value) < 12
+    side_pose = wear({"trunk": np.eye(3),
+                      "upper_arm": axis_angle([1.0, 0, 0], np.radians(-70)),
+                      "forearm": axis_angle([1.0, 0, 0], np.radians(-70))}, side, spin, seed=3)
+    b = StrapKinematics(cal).compute(side_pose)
+    assert b.movement == "abduction"
+
+
+def test_worn_position_is_the_zero_and_can_be_saved():
+    """However the box sits, the pose it was worn in is standing still."""
+    spin = {"upper_arm": 35.0}
+    cal = npose("right", spin, seed=2)
+    worn = wear({s: np.eye(3) for s in SENSORS}, "right", spin, seed=2)
+    for name in SENSORS:
+        assert np.allclose(cal.segment(name, worn[name]), np.eye(3), atol=1e-6)
+    restored = StrapCalibration.from_dict(cal.to_dict())
+    for name in SENSORS:
+        assert np.allclose(restored.segment(name, worn[name]), np.eye(3), atol=1e-6)
+
+
+def test_figure_stays_standing_and_a_forward_raise_points_at_the_camera():
+    from physiobuddy_hub.straps.calibrate import strap_pose
+
+    cal = npose("right", seed=5)
+    still = wear({s: np.eye(3) for s in SENSORS}, "right", seed=5)
+    snap = {s: {"available": True, "quat": still[s].tolist()} for s in SENSORS}
+    pose = strap_pose(cal, snap)
+    assert pose["trunk"][1] > 0.9 and pose["upper_arm"][1] < -0.9
+
+    arm = axis_angle(EZ, np.radians(90))
+    moved = wear({"trunk": np.eye(3), "upper_arm": arm, "forearm": arm}, "right", seed=5)
+    # Waist sample missing: the stand is kept, and the raised arm still points toward the camera (+Z).
+    snap = {s: {"available": True, "quat": moved[s].tolist()} for s in ("upper_arm", "forearm")}
+    pose = strap_pose(cal, snap)
+    assert pose["trunk"] is None and pose["upper_arm"][2] > 0.9 and pose["upper_arm"][1] < 0.2
+
+
 def test_missing_strap_means_unavailable_not_zero():
     kin = StrapKinematics(npose("left"))
     q = wear({"upper_arm": np.eye(3), "forearm": np.eye(3)}, "left")

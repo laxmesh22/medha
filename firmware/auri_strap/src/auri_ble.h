@@ -1,4 +1,4 @@
-// Auri strap BLE protocol v1: UUIDs, opcodes and packet packing. The contract is firmware/protocol/PROTOCOL.md (this file lives in the sketch so Arduino can build it);
+// Auri strap BLE protocol v3: UUIDs, opcodes and packet packing. The contract is firmware/protocol/PROTOCOL.md (this file lives in the sketch so Arduino can build it);
 // the hub-side decoder is firmware/protocol/auri_ble.py. Change all three together.
 #pragma once
 #include <stdint.h>
@@ -6,7 +6,7 @@
 
 namespace auri {
 
-constexpr uint8_t PROTOCOL_VERSION = 2;  // v2: combined 37-byte IMU_DATA when the MTU allows, notify drops in STATUS
+constexpr uint8_t PROTOCOL_VERSION = 3;  // v3 adds STATUS type 0x07 and COMMAND 0x07; the 16-byte status record is unchanged
 
 constexpr const char* SERVICE_UUID = "3c3ff578-acd0-46f5-a868-3ef18783e0b1";
 constexpr const char* IMU_DATA_UUID = "55b3d211-8c74-4650-9156-6b55c5d4384a";
@@ -24,17 +24,23 @@ enum Opcode : uint8_t {
   CMD_STREAM = 0x04,
   CMD_IMU_RESET = 0x05,
   CMD_TIME_PING = 0x06,
+  CMD_POWER = 0x07,  // mode uint8: 0 run, 1 sleep now, 2 set idle timeout (next byte is minutes; 0 disables)
 };
 
 enum Haptic : uint8_t { HAPTIC_TARGET = 1, HAPTIC_HOLD_DONE = 2, HAPTIC_WARNING = 3, HAPTIC_STOP = 4 };
 
 constexpr uint8_t STATUS_RECORD = 0x01;
 constexpr uint8_t STATUS_PONG = 0x06;
+constexpr uint8_t STATUS_POWER = 0x07;
+
+constexpr uint8_t PWR_RUN = 0, PWR_SLOW = 1, PWR_LIGHT = 2;
+constexpr uint8_t PWR_MODE_RUN = 0, PWR_MODE_SLEEP = 1, PWR_MODE_TIMEOUT = 2;
 
 constexpr size_t IMU_PACKET_LEN = 17;
 constexpr size_t RAW_PACKET_LEN = 20;
 constexpr size_t STATUS_LEN = 16;
 constexpr size_t PONG_LEN = 13;
+constexpr size_t POWER_LEN = 6;
 constexpr size_t COMBINED_LEN = IMU_PACKET_LEN + RAW_PACKET_LEN;  // v2, MTU >= 40
 
 // IMU_DATA flags
@@ -116,6 +122,16 @@ inline void packPong(uint8_t out[PONG_LEN], uint64_t hostUs, uint32_t tMs) {
   out[0] = STATUS_PONG;
   put64(out + 1, hostUs);
   put32(out + 9, tMs);
+}
+
+// Power record. flags bit0 = warn, bit1 = critical (both 0 when no divider). idleTimeoutS is the configured
+// disconnect timeout; 0 means the idle policy is off.
+inline void packPower(uint8_t out[POWER_LEN], uint8_t flags, uint8_t state, int8_t txDbm, uint16_t idleTimeoutS) {
+  out[0] = STATUS_POWER;
+  out[1] = flags;
+  out[2] = state;
+  out[3] = (uint8_t)txDbm;
+  put16(out + 4, idleTimeoutS);
 }
 
 }  // namespace auri

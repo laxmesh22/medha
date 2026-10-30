@@ -39,6 +39,8 @@ export interface Patient {
   conditions: string[];
   medications: string | null;
   notes: string | null;
+  /** Intake answers with no column of their own, plus language and text_size. */
+  intake?: Record<string, unknown>;
   created_at: string;
   consent_at: string; // when the patient linked to this clinician
   video_room: string; // private video-consult room for this patient and clinician
@@ -81,7 +83,8 @@ export interface CarePlan {
 export interface SessionExercise {
   exercise_id: string;
   reps_counted: number;
-  reps_rejected: number;
+  /** Null when the phone could not classify the rep. */
+  reps_rejected: number | null;
   peak_deg: number | null;
   median_deg: number | null;
   flags: string[];
@@ -96,6 +99,7 @@ export interface Session {
   source: "home" | "station";
   pain_before: number | null;
   pain_after: number | null;
+  ended_early?: boolean | null;
   notes: string | null;
   exercises: SessionExercise[];
 }
@@ -109,6 +113,44 @@ export interface VideoCall {
   started_at: string | null;
   notes: string | null;
   created_at: string;
+}
+
+/** One submitted intake. Older versions stay. */
+export interface PatientIntake {
+  id: string;
+  patient_id: string;
+  version: number;
+  submitted_at: string;
+  date_of_birth: string | null;
+  sex: string | null;
+  gender: string | null;
+  affected_side: string | null;
+  onset: string | null;
+  trigger: string | null;
+  trigger_note: string | null;
+  main_problem: string | null;
+  pain_now: number | null;
+  sleep: string | null;
+  hard_tasks: string[];
+  load: string | null;
+  load_increased: string | null;
+  load_note: string | null;
+  past_injury: string | null;
+  past_injury_when: string | null;
+  prior_frozen: string | null;
+  conditions: string[];
+  seen_before: string | null;
+  seen_who: string[];
+  extra: Record<string, unknown>;
+}
+
+export interface PatientConsent {
+  id: string;
+  patient_id: string;
+  kind: "privacy" | "share_with_clinician";
+  version: string;
+  agreed_at: string;
+  clinician_id: string | null;
 }
 
 export interface ClinicianInput {
@@ -148,6 +190,8 @@ export interface Api {
   publishPlan(patientId: string, notes: string, items: PlanItem[]): Promise<CarePlan>;
   listSessions(sinceDays: number, patientId?: string): Promise<Session[]>; // newest first
   listCalls(patientId?: string): Promise<VideoCall[]>;
+  listIntakes(patientId?: string): Promise<PatientIntake[]>;
+  listConsents(patientId?: string): Promise<PatientConsent[]>;
   scheduleCall(patientId: string, when: string, minutes: number, notes: string): Promise<VideoCall>;
   startCall(patientId: string, scheduledId?: string): Promise<VideoCall>; // logs the call as started
   cancelCall(id: string): Promise<void>;

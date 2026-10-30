@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -10,13 +12,16 @@ import numpy as np
 from ..core.strap_kin import SENSORS, StrapCalibration, StrapKinematics
 
 STILL_GYRO_RAD_S = 0.3
-MIN_NPOSES = 50
+MIN_NPOSES = 20
+# The position the sensors were worn in. Git-ignored. Replaced only by a new calibration.
+MOUNT_FILE = Path(__file__).resolve().parents[2] / "straps_mount.local.json"
 
 
 def judge_npose(samples: dict) -> dict:
     """``samples``: sensor -> list of (quaternion, gyro rad/s or None).
 
-    A sensor with no rows is not on this pod. One that showed up must be still and have enough samples.
+    A sensor with no rows is not on this pod. One with enough samples must be still.
+    A short one is left out; it must not reject the arms.
     """
     present = {s: rows for s, rows in samples.items() if s in SENSORS and rows}
     detail = {}
@@ -24,6 +29,7 @@ def judge_npose(samples: dict) -> dict:
         return {"ok": False, "reason": "no strap samples", "sensors": detail}
     short = []
     moving = []
+    usable = {}
     for name, rows in present.items():
         peak = None
         for _quat, gyro in rows:
@@ -34,14 +40,37 @@ def judge_npose(samples: dict) -> dict:
         detail[name] = {"samples": len(rows), "gyro_peak_rad_s": None if peak is None else round(peak, 3)}
         if len(rows) < MIN_NPOSES:
             short.append(name)
-        elif peak is not None and peak > STILL_GYRO_RAD_S:
+            continue
+        if peak is not None and peak > STILL_GYRO_RAD_S:
             moving.append(name)
-    if short:
-        return {"ok": False, "reason": f"fewer than {MIN_NPOSES} samples ({', '.join(short)})", "sensors": detail}
+            continue
+        usable[name] = rows
     if moving:
         return {"ok": False, "reason": f"moving ({', '.join(moving)} over {STILL_GYRO_RAD_S} rad/s)",
                 "sensors": detail}
-    return {"ok": True, "quats": {s: [q for q, _g in rows] for s, rows in present.items()}, "sensors": detail}
+    if not usable:
+        return {"ok": False, "reason": f"fewer than {MIN_NPOSES} samples ({', '.join(short)})", "sensors": detail}
+    return {"ok": True, "quats": {s: [q for q, _g in rows] for s, rows in usable.items()}, "sensors": detail}
+
+
+def save_worn_mount(cal: StrapCalibration, when: str) -> None:
+    """Lock the orientation the sensors had when they were worn and calibrated."""
+    payload = {"time": when, **cal.to_dict()}
+    MOUNT_FILE.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def load_worn_mount(side: str) -> Optional[tuple]:
+    """Return ``(calibration, time)`` when a saved mount exists for this side."""
+    if not MOUNT_FILE.is_file():
+        return None
+    try:
+        data = json.loads(MOUNT_FILE.read_text(encoding="utf-8"))
+        cal = StrapCalibration.from_dict(data)
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return None
+    if cal.side != side or not cal.ref:
+        return None
+    return cal, data.get("time")
 
 
 def strap_frame(cal: Optional[StrapCalibration], snap: dict):
@@ -66,6 +95,49 @@ def strap_frame(cal: Optional[StrapCalibration], snap: dict):
         if u is not None:
             up[name] = np.asarray(u, float)
     return angles, {"angles": angles, "gyro": gyro, "up": up}
+
+
+def strap_pose(cal: Optional[StrapCalibration], snap: dict):
+    """Limb directions for the 3D figure, in the display frame (y up, z toward the camera).
+
+    None for a limb whose strap is missing. Never a zero vector.
+    """
+    if cal is None or not snap:
+        return None
+    quats = {}
+    for name, view in snap.items():
+        if name not in SENSORS or not view or not view.get("available") or view.get("quat") is None:
+            continue
+        quats[name] = view["quat"]
+    if not quats:
+        return None
+    down = np.array([0.0, -1.0, 0.0])
+    up = np.array([0.0, 1.0, 0.0])
+    Qt = cal.segment("trunk", quats.get("trunk"))
+    Qa = cal.segment("upper_arm", quats.get("upper_arm"))
+    Qf = cal.segment("forearm", quats.get("forearm"))
+
+    def show(vec) -> Optional[list]:
+        v = np.asarray(vec, float)
+        n = float(np.linalg.norm(v))
+        if n < 1e-6 or not np.all(np.isfinite(v)):
+            return None
+        v = v / n
+        return [round(float(-v[2]), 4), round(float(v[1]), 4), round(float(v[0]), 4)]
+
+    pose = {"side": cal.side, "trunk": None, "upper_arm": None, "forearm": None}
+    # A missing waist sample keeps the calibrated stand. Clinical angles stay unavailable;
+    # the figure does not invent a lean, and the arms still have a body frame.
+    trunk_q = Qt if Qt is not None else np.eye(3)
+    if Qt is not None:
+        pose["trunk"] = show(trunk_q @ up)
+    if Qa is not None:
+        pose["upper_arm"] = show(trunk_q.T @ Qa @ down)
+    if Qf is not None:
+        pose["forearm"] = show(trunk_q.T @ Qf @ down)
+    if pose["trunk"] is None and pose["upper_arm"] is None and pose["forearm"] is None:
+        return None
+    return pose
 
 
 def _keep(buckets, seen, name, quat, gyro, seq) -> None:

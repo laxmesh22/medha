@@ -115,7 +115,8 @@ def adapt_line(obj: dict, host_rx_ms: float | None = None):
         if vis is not None and float(vis) >= VIS_MIN and all(c is not None for c in coords):
             points[index] = [float(c) for c in coords]
             valid[index] = True
-    pose = Pose2D(np.nan_to_num(pixels), scores) if np.isfinite(pixels).any() else None
+    # Missing pixels stay NaN. Turning them into 0 would draw a joint in the corner.
+    pose = Pose2D(pixels, scores) if np.isfinite(pixels).any() else None
     engine = dict(obj.get("engine") or {})
     engine["hint"] = landmark_hint(engine.get("missing"), engine.get("low_confidence"))
     # A head and shoulders with no arm still produces a shrug number. The engine saying
@@ -154,6 +155,7 @@ class WebcamSource:
         self._preview_t_ms: float | None = None
         self._preview_seq = threading.Event()
         self._preview_ring: dict[int, tuple] = {}
+        self._posed: set[int] = set()
         self.root = repo_root() if root is None else root
         self.info = {
             "device": "webcam",
@@ -246,6 +248,19 @@ class WebcamSource:
         t_ms, jpeg, b64 = item
         return {"frame": int(frame), "t_ms": t_ms, "jpeg": jpeg, "b64": b64}
 
+    def _publish_preview(self, frame_i: int) -> None:
+        """Show a JPEG only once that frame's pose has arrived, so the skeleton is not a frame behind."""
+        item = self._preview_ring.get(int(frame_i))
+        if item is None or int(frame_i) not in self._posed:
+            return
+        if self._preview_frame is not None and int(frame_i) < int(self._preview_frame):
+            return
+        t_ms, jpeg, _b64 = item
+        self._preview = jpeg
+        self._preview_frame = int(frame_i)
+        self._preview_t_ms = t_ms
+        self._preview_seq.set()
+
     def preview_view(self) -> dict | None:
         """Latest JPEG plus the frame id it was measured with. Never recorded."""
         jpeg = self._preview
@@ -292,16 +307,12 @@ class WebcamSource:
                         # A late JPEG must not replace a newer frame. The bytes are
                         # never written to the recorder.
                         frame_i = int(frame_no)
-                        if self._preview_frame is None or frame_i >= int(self._preview_frame):
-                            self._preview = jpeg
-                            self._preview_frame = frame_i
-                            t_ms = obj.get("t_ms")
-                            self._preview_t_ms = None if t_ms is None else float(t_ms)
-                            self._preview_seq.set()
                         t_ms = obj.get("t_ms")
                         self._preview_ring[frame_i] = (None if t_ms is None else float(t_ms), jpeg, encoded)
                         while len(self._preview_ring) > 8:
                             self._preview_ring.pop(min(self._preview_ring))
+                        # Held until the landmark line for this frame. The picture then matches the skeleton.
+                        self._publish_preview(frame_i)
                 self._preview_ms += (time.perf_counter() - t0) * 1000.0
                 self._preview_n += 1
                 if self._preview_n % 10 == 0:
@@ -310,6 +321,11 @@ class WebcamSource:
                     self._preview_n = 0
                 continue
             item = adapt_line(obj, host_rx_ms=time.time() * 1000.0)
+            posed = int(item[3].frame_number)
+            self._posed.add(posed)
+            while len(self._posed) > 16:
+                self._posed.discard(min(self._posed))
+            self._publish_preview(posed)
             if self._queue.full():
                 try:
                     self._queue.get_nowait()

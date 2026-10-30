@@ -22,7 +22,7 @@ schedule). Showcase: 31 Oct 2026, IIT Bombay. ML specifics: `ml/README.md`.
 7. Test recording sessions go to a scratch `--dataset-dir`, never `ml/data/real` (that folder is training data).
 
 ## Now working on
-- (empty)
+- 30 Oct, Claude Code + Cursor (bridge LIVE brief 042): connecting and calibrating three straps. Files: `hub/physiobuddy_hub/straps/*`, `pipeline.py`, `api/server.py`, `core/strap_kin.py`, `web/src/main.js`, `tools/identify_straps.py`, `tools/calibrate_straps.py`. **Codex: stay out of these until this line is cleared**; `ml/` and `recorder.py` remain yours.
 
 ## Log
 ### 2026-10-14 22:57 · Claude Code (session "Agent handoff with OpenCV gesture tracking")

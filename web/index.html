@@ -127,6 +127,21 @@
           </details>
         </section>
 
+        <details id="straps-card" class="metrics fold" open hidden>
+          <summary><h3>Straps</h3><span id="straps-link"></span></summary>
+          <div class="fold-body">
+            <p id="straps-cal" class="rec-note"></p>
+            <ul id="straps-slots" class="strap-slots"></ul>
+            <div class="rec-btns">
+              <button type="button" id="straps-guided" class="btn-quiet">Guided calibration</button>
+              <button type="button" id="straps-npose" class="btn-quiet">Calibrate: stand still (N-pose)</button>
+              <button type="button" id="straps-raise" class="btn-quiet">Calibrate: forward raise</button>
+            </div>
+            <p id="straps-msg" class="rec-note" hidden></p>
+            <dl id="straps-compare"></dl>
+          </div>
+        </details>
+
         <details class="vision fold">
           <summary><h3>Camera</h3><span id="model-name">pose model</span></summary>
           <div class="fold-body">
@@ -143,18 +158,6 @@
           </div>
         </details>
 
-        <details id="straps-card" class="metrics fold" hidden>
-          <summary><h3>Straps</h3><span id="straps-link"></span></summary>
-          <div class="fold-body">
-            <p id="straps-cal" class="rec-note"></p>
-            <div class="rec-btns">
-              <button type="button" id="straps-npose" class="btn-quiet">Calibrate: stand still (N-pose)</button>
-              <button type="button" id="straps-raise" class="btn-quiet">Calibrate: forward raise</button>
-            </div>
-            <p id="straps-msg" class="rec-note" hidden></p>
-            <dl id="straps-compare"></dl>
-          </div>
-        </details>
       </aside>
 
       <details class="lower-fold">

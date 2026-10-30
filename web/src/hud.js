@@ -75,10 +75,24 @@ export class VisionPanel {
       for (const key of this.byFrame.keys()) {
         if (key < state.frame - 12) this.byFrame.delete(key);
       }
+      this._showSynced();
     }
     const bmp = this.preview?.bmp;
     const aspect = bmp ? bmp.width / bmp.height : state?.image_aspect;
     if (aspect && this.h && Math.abs(aspect - this.w / this.h) > 0.02) this.resize();
+  }
+
+  _showSynced() {
+    const shot = this._pending;
+    if (!shot || !this.byFrame.has(shot.frame)) return;
+    if (this.preview?.bmp && this.preview.frame !== shot.frame) this.preview.bmp.close();
+    this.preview = shot;
+    this._pending = null;
+    this.fetched = (this.fetched || 0) + 1;
+    const aspect = shot.bmp.width / shot.bmp.height;
+    if (this.h && Math.abs(aspect - this.w / this.h) > 0.02) this.resize();
+    try { this.draw(); }
+    catch (err) { this.error = String(err && err.stack ? err.stack : err); }
   }
 
   startPreview() {
@@ -125,18 +139,15 @@ export class VisionPanel {
         if (ev.data?.hello) { this.workerReady = true; return; }
         if (ev.data?.error) { this.error = ev.data.error; return; }
         const shot = ev.data;
-        if (!this.live || (this.preview && shot.frame < this.preview.frame)) {
+        const newest = this._pending?.frame ?? this.preview?.frame ?? -1;
+        if (!this.live || shot.frame <= newest) {
           shot.bmp.close();
           this._worker.postMessage('ack');
           return;
         }
-        if (this.preview?.bmp) this.preview.bmp.close();
-        this.preview = shot;
-        this.fetched = (this.fetched || 0) + 1;
-        const aspect = shot.bmp.width / shot.bmp.height;
-        if (this.h && Math.abs(aspect - this.w / this.h) > 0.02) this.resize();
-        try { this.draw(); }
-        catch (err) { this.error = String(err && err.stack ? err.stack : err); }
+        if (this._pending?.bmp && this._pending.frame !== shot.frame) this._pending.bmp.close();
+        this._pending = shot;
+        this._showSynced();
         this._worker.postMessage('ack');
       };
     }
@@ -189,31 +200,54 @@ export class VisionPanel {
       s = this.byFrame.get(shot.frame) || null;
     }
 
-    const kp = s?.kp2d, sc = s?.scores;
-    if (!kp) {
+    const kp = s?.kp2d, sc = s?.scores, overlay = s?.overlay;
+    if (!kp && !overlay) {
       if (!show) this.text(w / 2, h / 2, 'Looking for a person', PALETTE.on, 14, 'center', SANS);
       else this.text(10, h - 10, this._foot(show), PALETTE.soft, 10.5, 'left', MONO);
       return;
     }
-    const P = (i) => {
+    // Overlay entries are already gated (show at 0.6, hide below 0.35, 150 ms fade).
+    // The image flip and this u flip are the same mirror, so the joint stays on the body.
+    const at = (i) => {
+      if (overlay) {
+        const p = overlay[i];
+        if (!p) return null;
+        const u = mirror ? 1 - p[0] : p[0];
+        return [u * w, p[1] * h, p[2] ?? 1];
+      }
+      if (!kp?.[i] || !sc || sc[i] < 0.4) return null;
       const u = mirror ? 1 - kp[i][0] : kp[i][0];
-      return [u * w, kp[i][1] * h];
+      if (u < 0 || u > 1 || kp[i][1] < 0 || kp[i][1] > 1) return null;
+      return [u * w, kp[i][1] * h, 1];
     };
-    const ok = (i) => sc && sc[i] >= 0.4;
+    const ok = (i) => at(i) != null;
     ctx.lineCap = 'round';
+    const face = new Set([0, 1, 2, 3, 4]);
     for (const [a, b] of BONES) {
-      if (!ok(a) || !ok(b)) continue;
-      ctx.beginPath(); ctx.moveTo(...P(a)); ctx.lineTo(...P(b));
+      const pa = at(a), pb = at(b);
+      if (!pa || !pb) continue;
+      if ((face.has(a) || face.has(b)) && (pa[2] < 1 || pb[2] < 1)) continue;
+      ctx.globalAlpha = Math.min(pa[2], pb[2]);
+      ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]);
       ctx.strokeStyle = '#063a3e'; ctx.lineWidth = 4; ctx.stroke();
       ctx.strokeStyle = PALETTE.on; ctx.lineWidth = 2; ctx.stroke();
     }
-    for (let i = 0; i < kp.length; i++) {
-      if (!sc || sc[i] < 0.2) continue;
-      const [x, y] = P(i);
-      ctx.fillStyle = sc[i] >= 0.7 ? PALETTE.on : sc[i] >= 0.4 ? PALETTE.warning : PALETTE.serious;
-      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
+    const nJoints = overlay ? overlay.length : (kp ? kp.length : 0);
+    for (let i = 0; i < nJoints; i++) {
+      const p = at(i);
+      if (!p) continue;
+      if (face.has(i) && p[2] < 1) continue;
+      ctx.globalAlpha = p[2];
+      const conf = sc && sc[i] != null ? sc[i] : p[2];
+      ctx.fillStyle = conf >= 0.7 ? PALETTE.on : conf >= 0.4 ? PALETTE.warning : PALETTE.serious;
+      ctx.beginPath(); ctx.arc(p[0], p[1], 3.5, 0, Math.PI * 2); ctx.fill();
     }
-    const pts = kp.map((_, i) => (ok(i) ? P(i) : null)).filter(Boolean);
+    ctx.globalAlpha = 1;
+    const pts = [];
+    for (let i = 0; i < nJoints; i++) {
+      const p = at(i);
+      if (p && p[2] >= 1) pts.push(p);
+    }
     if (pts.length > 3) { // corner brackets around the tracked person
       const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
       const x0 = Math.min(...xs) - 16, x1 = Math.max(...xs) + 16, y0 = Math.min(...ys) - 22, y1 = Math.max(...ys) + 16;
@@ -221,28 +255,36 @@ export class VisionPanel {
       for (const [cx, cy, dx, dy] of [[x0, y0, 1, 1], [x1, y0, -1, 1], [x0, y1, 1, -1], [x1, y1, -1, -1]]) {
         ctx.beginPath(); ctx.moveTo(cx, cy + dy * 12); ctx.lineTo(cx, cy); ctx.lineTo(cx + dx * 12, cy); ctx.stroke();
       }
-      const conf = sc.reduce((a, b) => a + Math.min(b, 1), 0) / sc.length;
+      const conf = sc ? sc.reduce((a, b) => a + Math.min(b ?? 0, 1), 0) / sc.length : 0;
       this.text(x0, y0 - 7, `patient  ${(conf * 100).toFixed(0)}%`, PALETTE.on, 11, 'left', MONO);
     }
     const arm = ARM[s.side] || ARM.right;
     arm.forEach((i, k) => {
-      if (!ok(i)) return;
-      const [x, y] = P(i);
+      const p = at(i);
+      if (!p) return;
+      const [x, y] = p;
       ctx.strokeStyle = 'rgba(245,242,234,0.85)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(x, y, 9 + 1.5 * Math.sin(t * 4 + k), 0, Math.PI * 2); ctx.stroke();
-      this.text(x + 13, y + 4, `${ARM_LABEL[k]} ${(Math.min(sc[i], 1) * 100).toFixed(0)}%`, PALETTE.on, 10.5, 'left', MONO);
+      const pct = sc && sc[i] != null ? Math.min(sc[i], 1) : p[2];
+      this.text(x + 13, y + 4, `${ARM_LABEL[k]} ${(pct * 100).toFixed(0)}%`, PALETTE.on, 10.5, 'left', MONO);
     });
     const e = s.angles?.elevation;
     if (ok(arm[0]) && ok(arm[1]) && ok(11) && ok(12)) {
-      const [sx, sy2] = P(arm[0]), [ex, ey] = P(arm[1]);
-      const hip = [(P(11)[0] + P(12)[0]) / 2, (P(11)[1] + P(12)[1]) / 2];
-      const sh = [(P(5)[0] + P(6)[0]) / 2, (P(5)[1] + P(6)[1]) / 2];
+      const [sx, sy2] = at(arm[0]), [ex, ey] = at(arm[1]);
+      const hip = [(at(11)[0] + at(12)[0]) / 2, (at(11)[1] + at(12)[1]) / 2];
+      const sh = [(at(5)[0] + at(6)[0]) / 2, (at(5)[1] + at(6)[1]) / 2];
       const down = Math.atan2(hip[1] - sh[1], hip[0] - sh[0]);
       let d = Math.atan2(ey - sy2, ex - sx) - down;
       while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
       ctx.strokeStyle = e?.value != null ? PALETTE.on : PALETTE.soft; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(sx, sy2, 32, down, down + d, d < 0); ctx.stroke();
       this.text(sx + (d > 0 ? -76 : 40), sy2 - 36, e?.value != null ? `${Math.round(e.value)}°` : 'n/a', PALETTE.on, 17, 'left', SANS, true);
+    }
+    if (s?.close_hint) {
+      ctx.fillStyle = 'rgba(6,58,62,0.88)';
+      ctx.fillRect(8, 8, w - 16, 36);
+      this.text(w / 2, 22, 'Step back 1-2 m', PALETTE.on, 13, 'center', SANS);
+      this.text(w / 2, 38, 'shoulders, elbows and hips must be in view', PALETTE.soft, 11, 'center', SANS);
     }
     this.text(10, h - 10, this._foot(show), PALETTE.soft, 10.5, 'left', MONO);
   }

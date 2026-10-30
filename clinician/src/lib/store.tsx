@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "./api";
 import { summarize, SEVERITY_ORDER, type PatientSummary } from "./stats";
-import type { AuthUser, CarePlan, Clinician, Exercise, Patient, Session, VideoCall } from "./types";
+import type { AuthUser, CarePlan, Clinician, Exercise, Patient, PatientConsent, PatientIntake, Session, VideoCall } from "./types";
 
 export const HISTORY_DAYS = 42;
 
@@ -18,6 +18,8 @@ interface Data {
   plans: CarePlan[];
   sessions: Session[];
   calls: VideoCall[];
+  intakes: PatientIntake[];
+  consents: PatientConsent[];
   summaries: PatientSummary[]; // most urgent first
   exerciseName: (id: string) => string;
   reload: () => Promise<void>;
@@ -30,7 +32,7 @@ const Ctx = createContext<Data | null>(null);
 export function DataProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<Omit<Data, "summaries" | "exerciseName" | "reload" | "setClinician" | "clearRedirect">>({
     loading: true, error: null, email: null, user: null, redirectTo: null, clinician: null, exercises: [], patients: [],
-    plans: [], sessions: [], calls: [],
+    plans: [], sessions: [], calls: [], intakes: [], consents: [],
   });
 
   const reload = useCallback(async () => {
@@ -52,12 +54,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setState((s) => ({ ...s, loading: false, error: null, email, user, clinician: null, redirectTo: redirectTo ?? s.redirectTo }));
         return;
       }
-      const [exercises, patients, plans, sessions, calls] = await Promise.all([
+      const [exercises, patients, plans, sessions, calls, intakes, consents] = await Promise.all([
         api.listExercises(), api.listPatients(), api.listPlans(), api.listSessions(HISTORY_DAYS), api.listCalls(),
+        api.listIntakes(), api.listConsents(),
       ]);
       sessions.sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at));
       setState((s) => ({ loading: false, error: null, email, user, redirectTo: redirectTo ?? s.redirectTo, clinician, exercises,
-        patients, plans, sessions, calls }));
+        patients, plans, sessions, calls, intakes, consents }));
     } catch (e) {
       setState((s) => ({ ...s, loading: false, error: e instanceof Error ? e.message : String(e) }));
     }

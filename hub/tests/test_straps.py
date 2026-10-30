@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 from physiobuddy_hub.api.server import create_app
 from physiobuddy_hub.straps.link import ClockOffset, SensorSample, choose_address, sensor_view
 from physiobuddy_hub.straps.protocol import (
-    PROTOCOL_VERSION, Status, command, decode_imu_data, decode_raw, decode_status,
+    PROTOCOL_VERSION, Power, Status, battery_low, battery_pct, command, decode_imu_data, decode_raw,
+    decode_status,
 )
 
 
@@ -44,13 +45,51 @@ def test_decoder_round_trip_17_37_20_and_status_v2():
 
     status = decode_status(_status(drops=7, i2c=2))
     assert isinstance(status, Status)
-    assert status.protocol == 2 and status.firmware == "0.1.0" and status.notify_drops == 7
+    assert status.protocol == 3 and status.firmware == "0.1.0" and status.notify_drops == 7
     assert status.i2c_errors == 2 and status.present == (0,) and status.ok == (0,)
     assert status.battery_mv is None  # 0 means no divider, not an empty cell
 
     pong = decode_status(struct.pack("<BQI", 0x06, 123456, 99))
     assert pong.host_us == 123456 and pong.t_ms == 99
     assert command(0x06, 99) == struct.pack("<BQ", 0x06, 99)
+    assert command(0x07, 2, 10) == bytes([0x07, 2, 10])
+
+
+def test_v2_status_and_v3_power_and_battery_line():
+    """Boards still running protocol 2 must decode. 0 mV is unavailable, not empty."""
+    old = decode_status(struct.pack("<8BHH4B", 0x01, 2, 0, 1, 0, 1, 0x01, 0x01, 3600, 0, 1, 50, 0, 0))
+    assert isinstance(old, Status)
+    assert old.protocol == 2 and old.battery_mv == 3600
+    assert battery_pct(None) is None and battery_pct(0) is None
+    assert battery_pct(3300) == 0 and battery_pct(3750) == 50 and battery_pct(4200) == 100
+    assert battery_pct(3000) == 0 and battery_pct(4300) == 100
+    assert battery_pct(3600) == 33
+    assert battery_low(None) is None and battery_low(0) is None
+    assert battery_low(3435) is True   # 15%
+    assert battery_low(3444) is False  # 16%
+    assert battery_low(3600) is False
+
+    power = decode_status(struct.pack("<BBBbH", 0x07, 0x03, 2, -3, 600))
+    assert isinstance(power, Power)
+    assert power.low and power.critical and power.state == 2
+    assert power.tx_power_dbm == -3 and power.idle_timeout_s == 600
+
+    from physiobuddy_hub.straps.link import StrapLink
+
+    link = StrapLink(["AA:BB:CC:DD:EE:FF"])
+    link._ensure("AA:BB:CC:DD:EE:FF", "AURI-ARM", None)
+    link._devices["AA:BB:CC:DD:EE:FF"].status = old
+    view = link.status()["devices"][0]
+    assert view["battery_mv"] == 3600 and view["battery_pct"] == 33 and view["battery_low"] is False
+    assert view["power"] is None
+    link._on_status("AA:BB:CC:DD:EE:FF", struct.pack("<BBBbH", 0x07, 0x01, 0, 9, 0))
+    view = link.status()["devices"][0]
+    assert view["battery_mv"] == 3600  # a power record must not wipe the v2 status
+    assert view["power"]["low"] is True and view["power"]["critical"] is False
+    assert view["power"]["tx_power_dbm"] == 9 and view["power"]["idle_timeout_s"] == 0
+    link._devices["AA:BB:CC:DD:EE:FF"].status = Status(2, "0.1.0", 1, (0,), (0,), None, 0, True, 50, False, 0)
+    view = link.status()["devices"][0]
+    assert view["battery_mv"] is None and view["battery_pct"] is None and view["battery_low"] is None
 
 
 def test_firmware_module_reexports_the_hub_decoder():
@@ -171,7 +210,12 @@ def test_npose_accepts_still_and_rejects_motion():
     rejected = judge_npose(moving)
     assert rejected["ok"] is False and "moving" in rejected["reason"]
     short = {"upper_arm": [([1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0])] * 12}
-    assert judge_npose(short)["ok"] is False and "fewer than 50" in judge_npose(short)["reason"]
+    assert judge_npose(short)["ok"] is False and "fewer than 20" in judge_npose(short)["reason"]
+    # A slow waist must not throw away a still arm capture.
+    mixed = {"upper_arm": [([1.0, 0.0, 0.0, 0.0], [0.02, 0.0, 0.0])] * 60,
+             "trunk": [([1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0])] * 12}
+    partial = judge_npose(mixed)
+    assert partial["ok"] and "trunk" not in partial["quats"] and "upper_arm" in partial["quats"]
 
 
 def test_side_change_and_reconnect_clear_calibration():
@@ -317,3 +361,21 @@ def test_calibration_keeps_a_burst_the_snapshot_would_collapse():
     samples = asyncio.run(run())
     assert link.snapshot()["upper_arm"]["seq"] == 59
     assert len(samples["upper_arm"]) == 60
+
+
+def test_slot_file_keeps_only_known_slots(tmp_path):
+    from physiobuddy_hub.straps.link import load_slot_file
+
+    path = tmp_path / "slots.json"
+    path.write_text('{"aa:bb:cc:dd:ee:01": "trunk", "aa:bb:cc:dd:ee:02": "hip"}', encoding="utf-8")
+    assert load_slot_file(path) == {"AA:BB:CC:DD:EE:01": "trunk"}
+    assert load_slot_file(tmp_path / "missing.json") == {}
+
+
+def test_gravity_offset_is_reported_only_for_a_calibrated_strap():
+    from physiobuddy_hub.core.strap_kin import StrapCalibration
+
+    cal = StrapCalibration.from_npose("right", {"trunk": [(1.0, 0.0, 0.0, 0.0)] * 5})
+    tilt = cal.gravity_offset_deg("trunk")
+    assert tilt is not None and tilt >= 0
+    assert cal.gravity_offset_deg("forearm") is None

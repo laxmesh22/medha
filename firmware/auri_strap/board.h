@@ -12,6 +12,16 @@
 #ifndef AURI_HAS_BATTERY_DIVIDER
 #define AURI_HAS_BATTERY_DIVIDER 0  // 1 when the 100k/100k divider is on D1; otherwise battery is reported unavailable
 #endif
+// PLACEHOLDER until measured brownout. Warn buzzes; stop turns IMU reports off. A divider-off build never uses these.
+#ifndef AURI_BAT_WARN_MV
+#define AURI_BAT_WARN_MV 3500
+#endif
+#ifndef AURI_BAT_STOP_MV
+#define AURI_BAT_STOP_MV 3350
+#endif
+#ifndef AURI_WAKE_BTN
+#define AURI_WAKE_BTN 0  // 1: momentary D2 to GND wakes light sleep (D2 is PIN_INT; do not set this if BNO INT is wired)
+#endif
 #ifndef AURI_BNO_RST_WIRED
 #define AURI_BNO_RST_WIRED 0  // 1 when BNO085 RST goes to D3 (lets firmware hard-reset a hung IMU)
 #endif

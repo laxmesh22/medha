@@ -3,7 +3,8 @@
 --
 -- Who writes what
 --   clinician dashboard : clinicians (own row, via create_clinician_profile), care_plans + plan_items, video_calls
---   patient app         : patients (own row), link via link_patient_with_code(code), sessions + session_exercises;
+--   patient app         : patients (own row, including intake), link via link_patient_with_code(code),
+--                         preview_clinician_by_code before linking, sessions + session_exercises;
 --                         reads its care_links.video_room and video_calls to join consults
 --   both read           : exercises (library)
 -- Row-level security: a clinician sees only patients linked to them (active care_link); a patient sees only their
@@ -41,7 +42,10 @@ create table if not exists public.clinicians (
 create table if not exists public.patients (
   id                   uuid primary key default gen_random_uuid(),
   auth_sub             text not null unique default public.current_sub(),
+  email                text,                 -- from the Auth0 token, not typed
   full_name            text not null,
+  last_seen_at         timestamptz,
+  app_version          text,
   date_of_birth        date,
   sex                  text check (sex in ('female', 'male', 'other', 'prefer_not_to_say')),
   phone                text,
@@ -52,6 +56,9 @@ create table if not exists public.patients (
   conditions           text[] default '{}',  -- e.g. {'diabetes','hypothyroidism'}
   medications          text,
   notes                text,
+  -- Old blob. Copied into patient_intake by 20261030b_patient_tables.sql and kept for one release.
+  -- The current app does not write it. date_of_birth, sex, affected_side, conditions stay the latest snapshot.
+  intake               jsonb not null default '{}'::jsonb,
   created_at           timestamptz not null default now()
 );
 
@@ -113,6 +120,7 @@ create table if not exists public.sessions (
   source        text not null default 'home' check (source in ('home', 'station')),
   pain_before   int  check (pain_before between 0 and 10),
   pain_after    int  check (pain_after between 0 and 10),
+  ended_early   boolean,                  -- patient stopped before the plan was finished; null = unknown
   notes         text
 );
 
@@ -121,7 +129,7 @@ create table if not exists public.session_exercises (
   session_id     uuid not null references public.sessions (id) on delete cascade,
   exercise_id    text not null references public.exercises (id),
   reps_counted   int  not null default 0,     -- reps the coach accepted
-  reps_rejected  int  not null default 0,     -- reps with a compensation or out of the movement
+  reps_rejected  int,                         -- rejected reps; null = the phone could not classify them, never a fake 0
   peak_deg       numeric,                     -- best rep (geometry); null = unavailable, never 0
   median_deg     numeric,
   flags          text[] default '{}'          -- e.g. {'TRUNK_LEAN_LATERAL','ELBOW_DRIFT'}
@@ -144,10 +152,83 @@ create table if not exists public.video_calls (
   created_at     timestamptz not null default now()
 );
 
+-- Versioned intake. A new submit inserts the next version; rows are not updated.
+create table if not exists public.patient_intake (
+  id               uuid primary key default gen_random_uuid(),
+  patient_id       uuid not null references public.patients (id) on delete cascade,
+  version          int  not null,
+  submitted_at     timestamptz not null default now(),
+  date_of_birth    date,
+  sex              text check (sex in ('female', 'male', 'other', 'prefer_not_to_say')),
+  gender           text,
+  affected_side    text check (affected_side in ('left', 'right', 'both')),
+  onset            text,
+  trigger          text,
+  trigger_note     text,
+  main_problem     text,
+  pain_now         int check (pain_now between 0 and 10),
+  sleep            text,
+  hard_tasks       text[] not null default '{}',
+  load             text,
+  load_increased   text,
+  load_note        text,
+  past_injury      text,
+  past_injury_when text,
+  prior_frozen     text,
+  conditions       text[] not null default '{}',
+  seen_before      text,
+  seen_who         text[] not null default '{}',
+  extra            jsonb not null default '{}'::jsonb,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  unique (patient_id, version)
+);
+
+create table if not exists public.patient_consents (
+  id            uuid primary key default gen_random_uuid(),
+  patient_id    uuid not null references public.patients (id) on delete cascade,
+  kind          text not null check (kind in ('privacy', 'share_with_clinician')),
+  version       text not null,
+  agreed_at     timestamptz not null default now(),
+  clinician_id  uuid references public.clinicians (id) on delete set null,
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+create table if not exists public.patient_settings (
+  patient_id   uuid primary key references public.patients (id) on delete cascade,
+  language     text,
+  text_size    text check (text_size in ('small', 'medium', 'large')),
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+
 create index if not exists sessions_patient_time on public.sessions (patient_id, started_at desc);
 create index if not exists video_calls_patient on public.video_calls (patient_id, scheduled_for desc);
 create index if not exists care_links_clinician on public.care_links (clinician_id) where status = 'active';
 create index if not exists plan_items_plan on public.plan_items (plan_id, position);
+create index if not exists patient_intake_patient on public.patient_intake (patient_id, version desc);
+create index if not exists patient_consents_patient on public.patient_consents (patient_id, agreed_at desc);
+
+create or replace function public.touch_updated_at()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end $$;
+
+drop trigger if exists patient_intake_touch on public.patient_intake;
+create trigger patient_intake_touch before update on public.patient_intake
+  for each row execute function public.touch_updated_at();
+drop trigger if exists patient_consents_touch on public.patient_consents;
+create trigger patient_consents_touch before update on public.patient_consents
+  for each row execute function public.touch_updated_at();
+drop trigger if exists patient_settings_touch on public.patient_settings;
+create trigger patient_settings_touch before update on public.patient_settings
+  for each row execute function public.touch_updated_at();
 
 -- ------------------------------------------------------------------------------------------- helpers
 create or replace function public.my_clinician_id() returns uuid
@@ -231,6 +312,20 @@ begin
   return c;
 end $$;
 
+-- Before the patient is linked they cannot read clinicians. This returns only the name, title, clinic and city.
+create or replace function public.preview_clinician_by_code(code text)
+returns table (full_name text, title text, clinic text, city text)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if public.current_sub() is null then
+    raise exception 'not signed in';
+  end if;
+  return query
+    select c.full_name, c.title, c.clinic, c.city
+    from public.clinicians c
+    where c.referral_code = upper(trim(code));
+end $$;
+
 -- Clinician: publish a new care-plan version (items as JSON) and supersede the previous one, atomically.
 create or replace function public.publish_care_plan(p_patient uuid, p_notes text, p_items jsonb) returns uuid
 language plpgsql security definer set search_path = public as $$
@@ -266,6 +361,9 @@ alter table public.plan_items        enable row level security;
 alter table public.sessions          enable row level security;
 alter table public.session_exercises enable row level security;
 alter table public.video_calls       enable row level security;
+alter table public.patient_intake     enable row level security;
+alter table public.patient_consents   enable row level security;
+alter table public.patient_settings   enable row level security;
 
 drop policy if exists "clinician reads own" on public.clinicians;
 create policy "clinician reads own" on public.clinicians for select using (auth_sub = current_sub());
@@ -326,10 +424,48 @@ drop policy if exists "clinician updates calls" on public.video_calls;
 create policy "clinician updates calls" on public.video_calls for update using (clinician_id = my_clinician_id())
   with check (clinician_id = my_clinician_id());
 
+drop policy if exists "patient reads intake" on public.patient_intake;
+create policy "patient reads intake" on public.patient_intake for select using (patient_id = my_patient_id());
+drop policy if exists "patient inserts intake" on public.patient_intake;
+create policy "patient inserts intake" on public.patient_intake for insert with check (patient_id = my_patient_id());
+drop policy if exists "clinician reads intake" on public.patient_intake;
+create policy "clinician reads intake" on public.patient_intake for select using (is_linked_clinician(patient_id));
+
+drop policy if exists "patient reads consents" on public.patient_consents;
+create policy "patient reads consents" on public.patient_consents for select using (patient_id = my_patient_id());
+drop policy if exists "patient inserts consents" on public.patient_consents;
+create policy "patient inserts consents" on public.patient_consents for insert with check (patient_id = my_patient_id());
+drop policy if exists "clinician reads consents" on public.patient_consents;
+create policy "clinician reads consents" on public.patient_consents for select using (is_linked_clinician(patient_id));
+
+drop policy if exists "patient owns settings" on public.patient_settings;
+create policy "patient owns settings" on public.patient_settings for all
+  using (patient_id = my_patient_id()) with check (patient_id = my_patient_id());
+drop policy if exists "clinician reads settings" on public.patient_settings;
+create policy "clinician reads settings" on public.patient_settings for select using (is_linked_clinician(patient_id));
+
 grant execute on function public.create_clinician_profile(jsonb) to authenticated;
 grant execute on function public.regenerate_referral_code() to authenticated;
 grant execute on function public.link_patient_with_code(text) to authenticated;
+revoke all on function public.preview_clinician_by_code(text) from public, anon;
+grant execute on function public.preview_clinician_by_code(text) to authenticated;
 grant execute on function public.publish_care_plan(uuid, text, jsonb) to authenticated;
+
+-- Databases created before these columns existed: create table if not exists does not add them.
+alter table public.session_exercises alter column reps_rejected drop not null;
+alter table public.session_exercises alter column reps_rejected drop default;
+alter table public.sessions add column if not exists ended_early boolean;
+alter table public.patients add column if not exists intake jsonb not null default '{}'::jsonb;
+alter table public.patients add column if not exists email text;
+alter table public.patients add column if not exists last_seen_at timestamptz;
+alter table public.patients add column if not exists app_version text;
+
+revoke all on table public.patient_intake from public, anon;
+revoke all on table public.patient_consents from public, anon;
+revoke all on table public.patient_settings from public, anon;
+grant select, insert on table public.patient_intake to authenticated;
+grant select, insert on table public.patient_consents to authenticated;
+grant select, insert, update on table public.patient_settings to authenticated;
 
 -- ------------------------------------------------------------------------------------------- library seed
 insert into public.exercises (id, name, metric, description, default_sets, default_reps, default_hold) values

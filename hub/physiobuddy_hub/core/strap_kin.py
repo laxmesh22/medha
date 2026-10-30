@@ -122,6 +122,14 @@ class StrapCalibration:
     mount: dict                                # sensor -> A, segment -> sensor
     forward_raise: dict = field(default_factory=dict)   # sensor -> True once the limb-axis rotation is fixed
 
+    def gravity_offset_deg(self, sensor: str) -> Optional[float]:
+        """How far gravity turned the nominal mount, in degrees. None when that strap was not in the N-pose."""
+        if sensor not in self.mount:
+            return None
+        corrected = self.mount[sensor] @ nominal_mount(sensor, self.side).T
+        cosine = float(np.clip((np.trace(corrected) - 1.0) / 2.0, -1.0, 1.0))
+        return float(np.degrees(np.arccos(cosine)))
+
     @classmethod
     def from_npose(cls, side: str, quats: dict) -> "StrapCalibration":
         """``quats``: sensor -> list of quaternions recorded while standing still in the N-pose (~2 s)."""
@@ -136,13 +144,30 @@ class StrapCalibration:
             ref[s], mount[s] = Rc, C @ A
         return cls(side, ref, mount)
 
+    def to_dict(self) -> dict:
+        """The worn orientation, so a later session can keep this mount."""
+        def mats(group):
+            return {name: np.asarray(value, float).round(8).tolist() for name, value in group.items()}
+        return {
+            "side": self.side,
+            "ref": mats(self.ref),
+            "mount": mats(self.mount),
+            "forward_raise": {name: bool(done) for name, done in self.forward_raise.items()},
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "StrapCalibration":
+        ref = {name: np.asarray(value, float) for name, value in (data.get("ref") or {}).items()}
+        mount = {name: np.asarray(value, float) for name, value in (data.get("mount") or {}).items()}
+        return cls(str(data.get("side") or "right"), ref, mount, dict(data.get("forward_raise") or {}))
+
     def refine_with_forward_raise(self, gyro: dict) -> None:
         """``gyro``: sensor -> (T, 3) rates in pod axes during a slow straight-arm forward raise. Flexion turns the
         humerus and forearm about the segment +Z axis; turning the mount about the limb axis (segment Y) until the
         measured rotation axis lies on segment Z removes the strap's rotation about the arm."""
         for s in ("upper_arm", "forearm"):
             g = np.asarray(gyro.get(s, []), float)
-            if s not in self.mount or len(g) < 10:
+            if s not in self.mount or self.forward_raise.get(s) or len(g) < 10:
                 continue
             fast = g[np.linalg.norm(g, axis=1) > 10.0]       # deg/s: only the moving part of the raise
             if len(fast) < 10:
@@ -160,6 +185,50 @@ class StrapCalibration:
             ang = np.arctan2(np.dot(y_s, np.cross(z_p, a_p)), np.dot(z_p, a_p))
             self.mount[s] = axis_angle(y_s, ang) @ A
             self.forward_raise[s] = True
+
+    def refine_from_raise_direction(self, samples: dict) -> list:
+        """``samples``: sensor -> list of (quaternion, gyro or None).
+
+        The N-pose already set which chip axis is up. A box that lies flat, or sits
+        crooked on the strap, still leaves forward and sideways swapped. The direction
+        the arm actually moved in this raise is taken as forward.
+        """
+        trunks = []
+        for quat, _gyro in samples.get("trunk") or []:
+            Q = self.segment("trunk", quat)
+            if Q is not None:
+                trunks.append(Q)
+        Qt = mean_rotation(trunks) if trunks else None
+        done = []
+        for name in ("upper_arm", "forearm"):
+            rows = samples.get(name) or []
+            if name not in self.mount or self.forward_raise.get(name) or len(rows) < 8:
+                continue
+            headings = []
+            for quat, _gyro in rows:
+                Qa = self.segment(name, quat)
+                if Qa is None:
+                    continue
+                limb = Qa @ DOWN
+                if Qt is not None:
+                    limb = Qt.T @ limb
+                flat = np.array([float(limb[0]), 0.0, float(limb[2])])
+                n = float(np.linalg.norm(flat))
+                if n > 0.35:
+                    headings.append(flat / n)
+            if len(headings) < 8:
+                continue
+            mean = np.mean(headings, axis=0)
+            n = float(np.linalg.norm(mean))
+            if n < 0.5:
+                continue
+            mean /= n
+            # Heading 0 is anterior (+X). Rotate the mount about the limb so this raise lands there.
+            az = float(np.arctan2(mean[2], mean[0]))
+            self.mount[name] = self.mount[name] @ axis_angle(np.array([0.0, 1.0, 0.0]), -az)
+            self.forward_raise[name] = True
+            done.append(name)
+        return done
 
     def segment(self, sensor: str, q) -> Optional[np.ndarray]:
         """Segment orientation in the body frame B (rotation, segment -> B)."""

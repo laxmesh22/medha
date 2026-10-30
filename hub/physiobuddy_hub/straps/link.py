@@ -5,17 +5,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 from .protocol import (
     CMD_IMU_RESET, CMD_RATE, CMD_STREAM, CMD_TIME_PING, COMMAND_UUID, DEVICE_NAMES, IMU_DATA_UUID,
-    RAW_DATA_UUID, SENSOR_NAMES, SERVICE_UUID, STATUS_UUID, Status, command, decode_imu_data, decode_raw,
-    decode_status,
+    RAW_DATA_UUID, SENSOR_NAMES, SERVICE_UUID, STATUS_UUID, Power, Status, battery_low, battery_pct, command,
+    decode_imu_data, decode_raw, decode_status,
 )
 
 log = logging.getLogger(__name__)
@@ -29,6 +31,28 @@ RECONNECT_S = (1.0, 2.0, 5.0, 10.0)  # capped at 10 s; a missing sensor does not
 STREAM_HZ = 50  # 100 Hz overruns the strap and the next GATT write returns Insufficient Resource
 LINK_TEST_SENSOR = 15
 SLOT_IDS = {"upper_arm": 0, "forearm": 1, "trunk": 2}
+# Written by tools/identify_straps.py. Git-ignored. CLI --strap-slot overrides a key.
+SLOT_FILE = Path(__file__).resolve().parents[2] / "straps_slots.local.json"
+
+
+def load_slot_file(path: Optional[Path] = None) -> dict:
+    """Address -> upper_arm|forearm|trunk. Missing or unreadable file is an empty map."""
+    path = SLOT_FILE if path is None else Path(path)
+    if not path.is_file():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        log.warning("strap slot file %s could not be read", path)
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    slots = {}
+    for addr, slot in raw.items():
+        if str(slot) not in SLOT_IDS:
+            continue
+        slots[str(addr).strip().upper()] = str(slot)
+    return slots
 
 
 class ClockOffset:
@@ -118,6 +142,7 @@ class _Device:
     seq_gaps: int = 0
     rx_ms: deque = field(default_factory=lambda: deque(maxlen=400))
     status: Optional[Status] = None
+    power: Optional[Power] = None
     status_hex: str = ""
     hardware: Optional[str] = None
     rtt_ms: Optional[float] = None
@@ -259,6 +284,12 @@ class StrapLink:
             "notify_drops": None if st is None else st.notify_drops,
             "i2c_errors": None if st is None else st.i2c_errors,
             "battery_mv": None if st is None else st.battery_mv,
+            "battery_pct": battery_pct(None if st is None else st.battery_mv),
+            "battery_low": battery_low(None if st is None else st.battery_mv),
+            "power": None if dev.power is None else {
+                "low": dev.power.low, "critical": dev.power.critical, "state": dev.power.state,
+                "tx_power_dbm": dev.power.tx_power_dbm, "idle_timeout_s": dev.power.idle_timeout_s,
+            },
             "firmware": None if st is None else st.firmware,
             "protocol": None if st is None else st.protocol,
             "rate_hz": None if st is None else st.rate_hz,
@@ -368,6 +399,9 @@ class StrapLink:
                     dev.hardware = None
                 if dev.name is None:
                     dev.name = DEVICE_NAMES.get(obj.unit)
+                return
+            if isinstance(obj, Power):
+                dev.power = obj
                 return
             dev.clock.observe(now, obj.t_ms)
             if dev.ping is not None and dev.ping[0] == obj.host_us:
@@ -515,7 +549,7 @@ class StrapLink:
                 dev.seq_gaps = 0
                 self.generation += 1
                 absent = dev.imu_absent
-            log.info("strap connected %s (generation %s)", address, self.generation)
+            log.info("strap connected %s mtu %s (generation %s)", address, client.mtu_size, self.generation)
             await client.start_notify(IMU_DATA_UUID, lambda _s, data: self._on_imu(address, bytes(data)))
             await client.start_notify(RAW_DATA_UUID, lambda _s, data: self._on_raw(address, bytes(data)))
             await client.start_notify(STATUS_UUID, lambda _s, data: self._on_status(address, bytes(data)))
@@ -526,6 +560,15 @@ class StrapLink:
                 status = await self._read_status_live(client, address)
             if not absent and (status is None or not status.present):
                 await self._recover_imu(client, address)
+            elif status is not None and status.present and not (set(status.present) & set(status.ok)):
+                # Present on the bus but not streaming. One reset of those sensors, then leave it.
+                mask = 0
+                for sid in status.present:
+                    if sid < 8:
+                        mask |= 1 << sid
+                log.info("strap %s present %s but not ok; one IMU reset", address, status.present)
+                await self._write(client, address, "imu reset", command(CMD_IMU_RESET, mask))
+                await self._write(client, address, "stream on", command(CMD_STREAM, 1))
             await self._ping(client, address)
             while not self._stop.is_set() and not disconnected.is_set():
                 if self._drop_requested(seen_drop) != seen_drop:

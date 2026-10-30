@@ -5,7 +5,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { auth0, GOOGLE_CONNECTION, handleAuth0Redirect, idToken } from "./auth0";
 import { yearsForStorage } from "./practice";
-import type { Api, AuthUser, CarePlan, Clinician, Patient, PlanItem, Session, VideoCall } from "./types";
+import type { Api, AuthUser, CarePlan, Clinician, Patient, PatientConsent, PatientIntake, PlanItem, Session, VideoCall } from "./types";
 
 const DAY = 86_400_000;
 
@@ -172,6 +172,22 @@ export function supabaseApi(url: string, anonKey: string, useAuth0: boolean): Ap
           median_deg: e.median_deg === null ? null : Number(e.median_deg), flags: e.flags ?? [],
         })),
       }));
+    },
+    async listIntakes(patientId) {
+      let q = sb.from("patient_intake").select("*").order("submitted_at", { ascending: false });
+      if (patientId) q = q.eq("patient_id", patientId);
+      return (must(await q) as PatientIntake[]).map((row) => ({
+        ...row,
+        hard_tasks: row.hard_tasks ?? [],
+        conditions: row.conditions ?? [],
+        seen_who: row.seen_who ?? [],
+        extra: row.extra ?? {},
+      }));
+    },
+    async listConsents(patientId) {
+      let q = sb.from("patient_consents").select("*").order("agreed_at", { ascending: false });
+      if (patientId) q = q.eq("patient_id", patientId);
+      return must(await q) as PatientConsent[];
     },
     async listCalls(patientId) {
       let q = sb.from("video_calls").select("*").order("created_at", { ascending: false });
