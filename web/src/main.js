@@ -634,10 +634,13 @@ async function guidedStraps() {
     msg.textContent = raise.reason || 'Raise was not accepted';
     return;
   }
+  const fit = raise.forearm_fit_deg == null
+    ? 'forearm not matched to the arm (keep the elbow straight)'
+    : `forearm matched to the arm within ${raise.forearm_fit_deg}°`;
   // The waist box's forward is only known once the trunk has tipped forward.
   if (!(npose.calibration?.sensors || []).includes('trunk')) {
     buttons.forEach((b) => { b.disabled = false; });
-    msg.textContent = 'N-pose ok, raise ok · no waist strap';
+    msg.textContent = `N-pose ok, raise ok · ${fit} · no waist strap`;
     return;
   }
   for (let i = 5; i >= 1; i -= 1) {
@@ -652,7 +655,7 @@ async function guidedStraps() {
     lean = { ok: false, reason: 'Could not reach the station' };
   }
   buttons.forEach((b) => { b.disabled = false; });
-  msg.textContent = lean.ok ? 'N-pose ok, raise ok, waist lean ok' : (lean.reason || 'Lean was not accepted');
+  msg.textContent = lean.ok ? `N-pose ok, raise ok, waist lean ok · ${fit}` : (lean.reason || 'Lean was not accepted');
 }
 
 // ---------------------------------------------------------------- controls
