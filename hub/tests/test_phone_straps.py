@@ -30,6 +30,16 @@ def test_unknown_sensor_and_bad_quat_are_dropped():
     assert view["quat"] is None
 
 
+def test_sensor_reboot_starts_a_new_generation():
+    """A rebooted BNO has a new yaw reference; the station must drop the old calibration."""
+    feed = PhoneStraps()
+    feed.push({"sensor": "forearm", "seq": 1, "valid": True, "quat": [1, 0, 0, 0]})
+    assert feed.generation == 0
+    feed.push({"sensor": "forearm", "seq": 2, "valid": True, "quat": [1, 0, 0, 0], "reset": True})
+    assert feed.generation == 1
+    assert [d["resets"] for d in feed.status()["devices"] if d["slot"] == "forearm"] == [1]
+
+
 def test_stale_sample_becomes_unavailable():
     feed = PhoneStraps()
     feed.push({"sensor": "trunk", "seq": 1, "valid": True, "quat": [1, 0, 0, 0], "gravity": [0, 0, 9.8]})

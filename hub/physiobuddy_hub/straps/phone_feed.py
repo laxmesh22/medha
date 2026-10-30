@@ -47,6 +47,7 @@ class PhoneStraps:
         self._rx: dict[str, deque] = {name: deque(maxlen=400) for name in SENSORS}
         self._new: dict[str, deque] = {name: deque(maxlen=800) for name in SENSORS}
         self._last_any = 0.0
+        self._resets: dict[str, int] = {name: 0 for name in SENSORS}
         self.generation = 0
 
     def receiving(self) -> bool:
@@ -83,6 +84,11 @@ class PhoneStraps:
         }
         with self._lock:
             self._last_any = time.time()
+            if msg.get("reset"):
+                # A rebooted sensor has a new yaw reference. A new generation drops the calibration.
+                self.generation += 1
+                self._resets[name] += 1
+            view["reset"] = bool(msg.get("reset"))
             self._view[name] = view
             self._rx[name].append(now)
             if view["available"]:
@@ -139,6 +145,7 @@ class PhoneStraps:
                 # Turning speed of the band now. Lets the page show which band is the one being moved.
                 "gyro_dps": None if gyro is None else round(math.degrees(math.sqrt(sum(g * g for g in gyro))), 1),
                 "seq": view.get("seq") if view else None,
+                "resets": self._resets[name],
                 "name": "phone",
                 "address": None,
                 "slot": name,
