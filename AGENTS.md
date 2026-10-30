@@ -240,5 +240,11 @@ Signup, emergency, attention page, static profile. Not committed, not deployed.
   when the waist was in the N-pose. Stored as `forward_raise["trunk"]`; the calibration view shows `forward_lean`
   and slot state `lean`. Tests cover the box on the back, the side and 135 deg. Needs a hub restart, then guided
   calibration again.
+- 076395d: raise/lean refuse to save when a band did not move with its segment and name the band. Undid a
+  concurrent front/back-only flip in `strap_pose` (it mirrored the figure; the backward arm was an upper-arm band the
+  raise never set). Tests use a scratch worn-position file. Do not "fix" a backward limb in the display mapping.
+- Upper-arm band FE:FD: healthy on the bench (50 Hz, 0 gaps, valid 100%, i2c 0), but the phone link timed out at
+  03:46 and the app never retried. AURIMEDIC 2afc0dc (branch auth0-supabase, not pushed) retries a dropped band
+  every 3 s; debug APK installed on 4P85WKTCDMX4QSO7. Waist B4:7A was not advertising (off or flat battery).
 - `test_auri_cv::test_pipeline_reads_the_worker_skeleton_and_skips_depth_lift` and
   `test_straps::test_straps_off_leaves_the_state_without_straps` fail since straps are always published (STATUS 115).
