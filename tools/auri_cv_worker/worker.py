@@ -41,6 +41,8 @@ PREVIEW_EVERY_S = 0.0
 JPEG_QUALITY = 80
 # 18 fps is one frame every 55.6 ms. A longer sensor period cannot meet that.
 MIN_PERIOD_MS = 1000.0 / 18.0
+# Mean brightness (0-255) below which a frame is too dark to hold a person.
+DARK_MEAN = 20.0
 
 
 def _write_line(payload: dict) -> None:
@@ -318,6 +320,13 @@ def _select_exposure(cap, exposure: str, backend: str):
             continue
         rows.append((manual, trial_period, trial_view["mean"]))
     chosen = _prefer_exposure(rows)
+    # In a dim room every fast exposure is black, and lifting brightness only turns black into flat grey with no
+    # person in it. A slower auto picture the detector can see beats a fast one it cannot.
+    if (chosen is None or chosen[2] < DARK_MEAN) and view is not None and view["mean"] >= DARK_MEAN:
+        cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.75)
+        period, frame = _measure_camera(cap)
+        _log_choice(cap, backend, "auto (slow: room too dark for a fast exposure)", period, frame)
+        return cap
     if chosen is None:
         _log_choice(cap, backend, "unset", period, frame)
         return cap
