@@ -158,7 +158,7 @@ def test_pipeline_reads_the_worker_skeleton_and_skips_depth_lift():
     assert state["auri_cv"]["quality"] == "VALID"
     assert state["auri_cv"]["flexion_deg"] is None
     assert state["angles"]["elevation"]["value"] is not None
-    assert "straps" not in state
+    assert state["strap_pose"] is None and state["straps"]["angles"] is None   # no phone data: nothing invented
 
 
 def test_missing_checkout_names_the_setup_commands(tmp_path):

@@ -247,7 +247,10 @@ def test_straps_off_leaves_the_state_without_straps():
     pipeline = _pipeline()
     pipeline._process(pipeline.source.latest())
     _version, state = pipeline.latest_state()
-    assert "straps" not in state
+    # The phone slots are always shown so the page is not blank; with no phone data nothing is connected or invented.
+    straps = state["straps"]
+    assert straps["mode"] == "phone" and not any(d["connected"] for d in straps["devices"])
+    assert straps["angles"] is None and state["strap_pose"] is None
 
 
 def test_calibrated_pose_matches_elevation_and_imu_width():

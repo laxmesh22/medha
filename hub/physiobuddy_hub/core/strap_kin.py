@@ -389,8 +389,12 @@ class StrapKinematics:
 
         if Qf is None:
             elbow = rot = na("forearm strap missing")
+        elif Qa is None:
+            elbow = rot = na("upper-arm strap missing")
         elif u is None:
-            elbow = rot = na("upper-arm or waist strap missing")
+            # The elbow is the angle between the two arm straps; the waist does not change it.
+            elbow = Measurement(_angle_deg(Qa @ DOWN, Qf @ DOWN), q_arm)
+            rot = na("rotation needs the waist strap")
         else:
             f = Qt.T @ Qf @ DOWN
             f[2] *= self.z_sign

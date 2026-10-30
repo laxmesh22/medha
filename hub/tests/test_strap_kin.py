@@ -228,4 +228,5 @@ def test_missing_strap_means_unavailable_not_zero():
     q = wear({"upper_arm": np.eye(3), "forearm": np.eye(3)}, "left")
     a = kin.compute(q)                                              # no waist strap
     assert a.elevation.value is None and a.trunk_lean_sagittal.value is None and a.shrug_index.value is None
+    assert a.rotation.value is None and abs(a.elbow_flexion.value) < 1     # elbow needs only the two arm straps
     assert a.apparent_elevation.value is not None                   # arm strap + gravity alone still works
