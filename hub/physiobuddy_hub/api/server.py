@@ -185,6 +185,13 @@ def create_app(pipeline, status: dict) -> FastAPI:
             return JSONResponse({"ok": False, "reason": "straps are off"}, status_code=409)
         return pipeline.finish_raise(await collect_samples(link, 4.0))
 
+    @app.post("/api/straps/calibrate/side")
+    async def strap_side():
+        link = pipeline.strap_source() or getattr(pipeline, "phone", None)
+        if link is None:
+            return JSONResponse({"ok": False, "reason": "straps are off"}, status_code=409)
+        return pipeline.finish_side(await collect_samples(link, 4.0))
+
     @app.post("/api/straps/calibrate/lean")
     async def strap_lean():
         link = pipeline.strap_source() or getattr(pipeline, "phone", None)

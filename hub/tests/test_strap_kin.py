@@ -170,6 +170,53 @@ def test_forearm_fit_is_refused_when_the_elbow_bends_during_the_raise():
     assert cal.align_forearm_to_upper_arm(rows) is None and np.allclose(cal.mount["forearm"], before)
 
 
+def _raise_rows(axis, side, spin, seed, upto=90):
+    """Straight-arm raise about ``axis`` (thorax frame). About -X the arm goes to the patient's right (+Z)."""
+    rows = {s: [] for s in SENSORS}
+    for d in range(10, upto, 4):
+        R = axis_angle(axis, np.radians(d))
+        q = wear({"trunk": np.eye(3), "upper_arm": R, "forearm": R}, side, spin, seed=seed)
+        for s in SENSORS:
+            rows[s].append((q[s].tolist(), None))
+    return rows
+
+
+def _plane(cal, side, spin, seed, R):
+    q = wear({"trunk": np.eye(3), "upper_arm": R, "forearm": R}, side, spin, seed=seed)
+    return StrapKinematics(cal).compute(q)
+
+
+def test_side_raise_alone_sets_sideways_for_a_twisted_box():
+    for side, zs in (("right", 1), ("left", -1)):
+        spin = {"upper_arm": 75.0, "forearm": -110.0}
+        cal = npose(side, spin, seed=9)
+        out = cal.refine_from_side_raise(_raise_rows([-zs, 0, 0], side, spin, 9))   # out to the patient's own side
+        assert not any(r["wrong_arm"] for r in out.values()) and cal.side_raise["upper_arm"]
+        abd = _plane(cal, side, spin, 9, axis_angle([1.0, 0, 0], np.radians(-70 * zs)))
+        flex = _plane(cal, side, spin, 9, axis_angle(EZ, np.radians(70)))
+        assert abd.movement == "abduction" and abs(abd.plane_of_elevation.value - 90) < 3
+        assert flex.movement == "flexion" and abs(flex.plane_of_elevation.value) < 3
+
+
+def test_side_raise_halves_a_crooked_forward_raise():
+    side, spin = "right", {"upper_arm": 40.0, "forearm": 40.0}
+    cal = npose(side, spin, seed=10)
+    crooked = axis_angle([0, 1.0, 0], np.radians(-30)) @ EZ        # forward raise 30 deg toward the side
+    cal.refine_from_raise_direction(_raise_rows(crooked, side, spin, 10))
+    before = _plane(cal, side, spin, 10, axis_angle(EZ, np.radians(70))).plane_of_elevation.value
+    out = cal.refine_from_side_raise(_raise_rows([-1.0, 0, 0], side, spin, 10))   # right side raise
+    after = _plane(cal, side, spin, 10, axis_angle(EZ, np.radians(70))).plane_of_elevation.value
+    assert abs(abs(before) - 30) < 3 and abs(abs(after) - 15) < 3 and abs(abs(out["upper_arm"]["error_deg"]) - 30) < 3
+
+
+def test_side_raise_to_the_other_side_means_the_other_arm():
+    side, spin = "right", {}
+    cal = npose(side, spin, seed=11)
+    before = cal.mount["upper_arm"].copy()
+    out = cal.refine_from_side_raise(_raise_rows([1.0, 0, 0], side, spin, 11))   # arm went to the left
+    assert out["upper_arm"]["wrong_arm"] and np.allclose(cal.mount["upper_arm"], before)
+
+
 def test_calibration_says_when_a_band_is_on_the_wrong_body_part():
     from physiobuddy_hub.straps.calibrate import placement_problem
 

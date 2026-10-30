@@ -481,7 +481,7 @@ const STRAP_ROWS = [
   ['trunk_lean_lateral', 'Trunk lean, sideways'],
 ];
 const STRAP_CAL = { none: 'Not calibrated', npose: 'N-pose ok', raise: 'raise ok', lean: 'lean ok', 'npose+raise': 'N-pose and forward raise' };
-const STRAP_BUTTONS = ['#straps-npose', '#straps-raise', '#straps-lean', '#straps-guided'];
+const STRAP_BUTTONS = ['#straps-npose', '#straps-raise', '#straps-side', '#straps-lean', '#straps-guided'];
 const STRAP_SLOT_LABEL = { upper_arm: 'Upper arm', forearm: 'Forearm', trunk: 'Waist' };
 
 function deg(m) {
@@ -542,7 +542,8 @@ function renderStraps(state) {
   const lan = (state.lan_ipv4 || []).filter((ip) => ip && !ip.startsWith('192.168.56.')).join(' or ');
   const where = lan ? `Phone sends to ${lan}` : '';
   const lean = cal.forward_lean ? 'waist lean' : '';
-  $('#straps-cal').textContent = [STRAP_CAL[cal.state] || cal.state, lean, sensors, where].filter(Boolean).join(' · ');
+  const side = (cal.side_raise || []).length ? 'side raise' : '';
+  $('#straps-cal').textContent = [STRAP_CAL[cal.state] || cal.state, side, lean, sensors, where].filter(Boolean).join(' · ');
   const list = $('#straps-slots');
   list.innerHTML = '';
   const bySlot = {};
@@ -637,10 +638,27 @@ async function guidedStraps() {
   const fit = raise.forearm_fit_deg == null
     ? 'forearm not matched to the arm (keep the elbow straight)'
     : `forearm matched to the arm within ${raise.forearm_fit_deg}°`;
+  for (let i = 5; i >= 1; i -= 1) {
+    msg.textContent = `Arm back down. Now raise the straight arm out to the ${ui.side} side, level with the shoulder. Starting in ${i}`;
+    await sleep(1000);
+  }
+  msg.textContent = `Raise the straight arm slowly out to the ${ui.side} side…`;
+  let sideRaise;
+  try {
+    sideRaise = await fetch('/api/straps/calibrate/side', { method: 'POST' }).then((r) => r.json());
+  } catch {
+    sideRaise = { ok: false, reason: 'Could not reach the station' };
+  }
+  if (!sideRaise.ok) {
+    buttons.forEach((b) => { b.disabled = false; });
+    msg.textContent = sideRaise.reason || 'Side raise was not accepted';
+    return;
+  }
+  const sideFit = `side raise ${sideRaise.side_error_deg}° from sideways`;
   // The waist box's forward is only known once the trunk has tipped forward.
   if (!(npose.calibration?.sensors || []).includes('trunk')) {
     buttons.forEach((b) => { b.disabled = false; });
-    msg.textContent = `N-pose ok, raise ok · ${fit} · no waist strap`;
+    msg.textContent = `N-pose ok, raise ok, side ok · ${fit} · ${sideFit} · no waist strap`;
     return;
   }
   for (let i = 5; i >= 1; i -= 1) {
@@ -655,7 +673,8 @@ async function guidedStraps() {
     lean = { ok: false, reason: 'Could not reach the station' };
   }
   buttons.forEach((b) => { b.disabled = false; });
-  msg.textContent = lean.ok ? `N-pose ok, raise ok, waist lean ok · ${fit}` : (lean.reason || 'Lean was not accepted');
+  msg.textContent = lean.ok ? `N-pose ok, raise ok, side ok, waist lean ok · ${fit} · ${sideFit}`
+    : (lean.reason || 'Lean was not accepted');
 }
 
 // ---------------------------------------------------------------- controls
@@ -761,6 +780,7 @@ document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click
 
 $('#straps-npose').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/npose', 'Wear the sensors as they sit. Stand still, arms by your sides…'));
 $('#straps-raise').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/raise', 'Raise the straight arm forward, toward the camera. Not out to the side…'));
+$('#straps-side').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/side', `Raise the straight arm out to the ${ui.side} side, level with the shoulder…`));
 $('#straps-lean').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/lean', 'Arms relaxed. Bend slowly forward from the hips toward the camera, then come back up…'));
 $('#straps-guided').addEventListener('click', () => guidedStraps());
 

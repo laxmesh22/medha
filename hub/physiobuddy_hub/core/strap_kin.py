@@ -39,6 +39,7 @@ DOWN = np.array([0.0, -1.0, 0.0])             # segment / thorax "down"
 MIN_LEAN_TILT = 0.2                            # sin of ~12 deg: below this the lean's direction is noise
 MIN_RAISE_SPAN_DEG = 40.0                      # the arm must travel this far to fix the forearm's axis
 MAX_FOREARM_FIT_DEG = 12.0                     # worse than this the elbow was not straight during the raise
+WRONG_ARM_DEG = 120.0                          # a side raise this far from sideways went to the other side
 
 # Where each pod axis points on the body in the N-pose, in segment axes: (pod X, pod Y, pod Z). Pod Y = Z x X.
 _M = {
@@ -125,6 +126,7 @@ class StrapCalibration:
     mount: dict                                # sensor -> A, segment -> sensor
     # sensor -> True once its forward is fixed (arms: the raise; trunk: the lean)
     forward_raise: dict = field(default_factory=dict)
+    side_raise: dict = field(default_factory=dict)     # arm sensor -> True once a side raise refined it
 
     def gravity_offset_deg(self, sensor: str) -> Optional[float]:
         """How far gravity turned the nominal mount, in degrees. None when that strap was not in the N-pose."""
@@ -157,13 +159,15 @@ class StrapCalibration:
             "ref": mats(self.ref),
             "mount": mats(self.mount),
             "forward_raise": {name: bool(done) for name, done in self.forward_raise.items()},
+            "side_raise": {name: bool(done) for name, done in self.side_raise.items()},
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "StrapCalibration":
         ref = {name: np.asarray(value, float) for name, value in (data.get("ref") or {}).items()}
         mount = {name: np.asarray(value, float) for name, value in (data.get("mount") or {}).items()}
-        return cls(str(data.get("side") or "right"), ref, mount, dict(data.get("forward_raise") or {}))
+        return cls(str(data.get("side") or "right"), ref, mount, dict(data.get("forward_raise") or {}),
+                   dict(data.get("side_raise") or {}))
 
     def refine_with_forward_raise(self, gyro: dict) -> None:
         """``gyro``: sensor -> (T, 3) rates in pod axes during a slow straight-arm forward raise. Flexion turns the
@@ -197,42 +201,75 @@ class StrapCalibration:
         crooked on the strap, still leaves forward and sideways swapped. The direction
         the arm actually moved in this raise is taken as forward.
         """
-        trunks = []
-        for quat, _gyro in samples.get("trunk") or []:
-            Q = self.segment("trunk", quat)
-            if Q is not None:
-                trunks.append(Q)
-        Qt = mean_rotation(trunks) if trunks else None
+        Qt = self._mean_trunk(samples)
         done = []
         for name in ("upper_arm", "forearm"):
-            rows = samples.get(name) or []
-            if name not in self.mount or self.forward_raise.get(name) or len(rows) < 8:
+            if name not in self.mount or self.forward_raise.get(name):
                 continue
-            headings = []
-            for quat, _gyro in rows:
-                Qa = self.segment(name, quat)
-                if Qa is None:
-                    continue
-                limb = Qa @ DOWN
-                if Qt is not None:
-                    limb = Qt.T @ limb
-                flat = np.array([float(limb[0]), 0.0, float(limb[2])])
-                n = float(np.linalg.norm(flat))
-                if n > 0.35:
-                    headings.append(flat / n)
-            if len(headings) < 8:
+            az = self._raise_heading(name, samples.get(name) or [], Qt)
+            if az is None:
                 continue
-            mean = np.mean(headings, axis=0)
-            n = float(np.linalg.norm(mean))
-            if n < 0.5:
-                continue
-            mean /= n
             # Heading 0 is anterior (+X). Rotate the mount about the limb so this raise lands there.
-            az = float(np.arctan2(mean[2], mean[0]))
             self.mount[name] = self.mount[name] @ axis_angle(np.array([0.0, 1.0, 0.0]), -az)
             self.forward_raise[name] = True
             done.append(name)
         return done
+
+    def refine_from_side_raise(self, samples: dict) -> dict:
+        """``samples``: sensor -> list of (quaternion, gyro or None) during a straight-arm raise out to the side.
+
+        The side raise sets sideways the way the forward raise sets forward. After a forward raise the two are split
+        evenly, so one crooked raise counts for half. An arm that went to the other side means the bands are on the
+        other arm than the station's side, and nothing is changed.
+
+        Returns sensor -> {"error_deg": how far the raise was from sideways before this step, "wrong_arm": bool}.
+        """
+        lateral = np.pi / 2 if self.side == "right" else -np.pi / 2     # thorax Z is the patient's right
+        Qt = self._mean_trunk(samples)
+        out = {}
+        for name in ("upper_arm", "forearm"):
+            if name not in self.mount:
+                continue
+            az = self._raise_heading(name, samples.get(name) or [], Qt)
+            if az is None:
+                continue
+            err = float(np.arctan2(np.sin(az - lateral), np.cos(az - lateral)))
+            wrong = abs(err) > np.radians(WRONG_ARM_DEG)
+            out[name] = {"error_deg": round(float(np.degrees(err)), 1), "wrong_arm": bool(wrong)}
+            if wrong:
+                continue
+            step = err / 2 if self.forward_raise.get(name) else err
+            self.mount[name] = self.mount[name] @ axis_angle(np.array([0.0, 1.0, 0.0]), -step)
+            self.side_raise[name] = True
+        return out
+
+    def _mean_trunk(self, samples: dict) -> Optional[np.ndarray]:
+        trunks = [Q for Q in (self.segment("trunk", q) for q, _g in samples.get("trunk") or []) if Q is not None]
+        return mean_rotation(trunks) if trunks else None
+
+    def _raise_heading(self, name: str, rows: list, Qt: Optional[np.ndarray]) -> Optional[float]:
+        """Mean direction around the body the limb pointed in while raised, radians (0 anterior, +pi/2 right)."""
+        if len(rows) < 8:
+            return None
+        headings = []
+        for quat, _gyro in rows:
+            Qa = self.segment(name, quat)
+            if Qa is None:
+                continue
+            limb = Qa @ DOWN
+            if Qt is not None:
+                limb = Qt.T @ limb
+            flat = np.array([float(limb[0]), 0.0, float(limb[2])])
+            n = float(np.linalg.norm(flat))
+            if n > 0.35:
+                headings.append(flat / n)
+        if len(headings) < 8:
+            return None
+        mean = np.mean(headings, axis=0)
+        n = float(np.linalg.norm(mean))
+        if n < 0.5:
+            return None
+        return float(np.arctan2(mean[2] / n, mean[0] / n))
 
     def align_forearm_to_upper_arm(self, samples: dict) -> Optional[float]:
         """``samples``: sensor -> list of (quaternion, gyro or None) during a straight-arm raise.

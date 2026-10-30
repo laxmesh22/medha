@@ -316,6 +316,7 @@ class CameraPipeline:
             "sensors": sorted(self.strap_cal.ref),
             "forward_raise": raised,
             "forward_lean": bool(self.strap_cal.forward_raise.get("trunk")),
+            "side_raise": sorted(name for name, done in self.strap_cal.side_raise.items() if done),
             "slots": slots,
         }
 
@@ -359,6 +360,25 @@ class CameraPipeline:
         save_worn_mount(self.strap_cal, self._strap_cal_time)
         return {"ok": True, "refined": refined, "forearm_fit_deg": None if fit is None else round(fit, 1),
                 "calibration": self.calibration_view()}
+
+    def finish_side(self, samples: dict) -> dict:
+        self._sync_strap_cal()
+        if self.strap_cal is None:
+            return {"ok": False, "reason": "stand still in the N-pose first"}
+        problem = placement_problem("raise", samples)
+        if problem:
+            return {"ok": False, "reason": problem}
+        result = self.strap_cal.refine_from_side_raise(samples)
+        if not result:
+            return {"ok": False, "reason": "side raise not seen; lift the straight arm slowly out to the side"}
+        if any(r["wrong_arm"] for r in result.values()):
+            other = "Left" if self.side == "right" else "Right"
+            return {"ok": False, "reason": f"the arm went to the other side: the bands look like they are on the "
+                                           f"{other.lower()} arm. Switch the station to {other} and calibrate again"}
+        self._strap_cal_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_worn_mount(self.strap_cal, self._strap_cal_time)
+        worst = max(abs(r["error_deg"]) for r in result.values())
+        return {"ok": True, "side_error_deg": round(worst, 1), "calibration": self.calibration_view()}
 
     def finish_lean(self, samples: dict) -> dict:
         self._sync_strap_cal()
