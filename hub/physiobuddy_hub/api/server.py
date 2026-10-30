@@ -47,6 +47,23 @@ class RecordStartBody(BaseModel):
     protocol: str = "full"
 
 
+def _lan_ipv4() -> list:
+    """Addresses the phone can use. Skips loopback, link-local, and the VirtualBox host-only NIC."""
+    import socket
+    found = []
+    try:
+        infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
+    except OSError:
+        return found
+    for info in infos:
+        ip = info[4][0]
+        if ip.startswith(("127.", "169.254.", "192.168.56.")):
+            continue
+        if ip not in found:
+            found.append(ip)
+    return found
+
+
 def create_app(pipeline, status: dict) -> FastAPI:
     app = FastAPI(title="Auri Hub", version=__version__)
 
@@ -62,6 +79,7 @@ def create_app(pipeline, status: dict) -> FastAPI:
             "debug_video": pipeline.debug_video,
             "camera_preview": bool(getattr(pipeline.source, "preview", False)),
             "pose_smoothing": getattr(pipeline, "pose_smoothing", "light"),
+            "lan_ipv4": _lan_ipv4(),
         }
         straps = pipeline.strap_status()
         if straps is not None:
@@ -194,7 +212,9 @@ def create_app(pipeline, status: dict) -> FastAPI:
             while True:
                 version, state = pipeline.latest_state()
                 if state is not None and version != last:
-                    await ws.send_json(state)
+                    payload = dict(state)
+                    payload["lan_ipv4"] = _lan_ipv4()
+                    await ws.send_json(payload)
                     last = version
                 else:
                     await asyncio.sleep(1.0 / WS_MAX_HZ)

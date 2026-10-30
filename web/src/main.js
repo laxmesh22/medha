@@ -536,7 +536,9 @@ function renderStraps(state) {
     : (state.straps.mode === 'phone' ? 'Waiting for the phone' : 'No strap connected');
   const cal = state.straps.calibration || { state: 'none', slots: [] };
   const sensors = (cal.sensors || []).join(', ');
-  $('#straps-cal').textContent = `${STRAP_CAL[cal.state] || cal.state}${sensors ? ` · ${sensors}` : ''}`;
+  const lan = (state.lan_ipv4 || []).filter((ip) => ip && !ip.startsWith('192.168.56.')).join(' or ');
+  const where = lan ? `Phone sends to ${lan}` : '';
+  $('#straps-cal').textContent = [STRAP_CAL[cal.state] || cal.state, sensors, where].filter(Boolean).join(' · ');
   const list = $('#straps-slots');
   list.innerHTML = '';
   const bySlot = {};
