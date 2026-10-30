@@ -4,6 +4,7 @@ A missing or stale sample is unavailable. Nothing here is turned into an angle.
 """
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections import deque
@@ -133,7 +134,11 @@ class PhoneStraps:
                 rates[name] = float(len(rx))
         for name in SENSORS:
             view = views.get(name)
+            gyro = view.get("gyro") if view else None
             devices.append({
+                # Turning speed of the band now. Lets the page show which band is the one being moved.
+                "gyro_dps": None if gyro is None else round(math.degrees(math.sqrt(sum(g * g for g in gyro))), 1),
+                "seq": view.get("seq") if view else None,
                 "name": "phone",
                 "address": None,
                 "slot": name,
