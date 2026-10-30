@@ -420,9 +420,11 @@ function render(state) {
   points.update(kp);
   const pose = state.strap_pose;
   if (avatar && pose && (pose.trunk || pose.upper_arm || pose.forearm)) {
+    // Mirror like the keypoints: reflect x and move the pose to the other arm.
     const flip = (v) => (!v || !ui.mirror ? v : [-v[0], v[1], v[2]]);
+    const other = { right: 'left', left: 'right' };
     avatar.solveStrap({
-      side: pose.side,
+      side: ui.mirror ? other[pose.side] ?? pose.side : pose.side,
       trunk: flip(pose.trunk),
       upper_arm: flip(pose.upper_arm),
       forearm: flip(pose.forearm),

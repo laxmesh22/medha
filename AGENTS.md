@@ -228,3 +228,13 @@ Signup, emergency, attention page, static profile. Not committed, not deployed.
 - Terms at `/terms`, required on the confirm step.
 - `/attention` for patients who are not on track. Overview "Video calls" is now Emergency (high or rising pain, call the patient, not an ambulance). Patient tab renamed the same way; follow-ups still use `video_calls`.
 - "No plan" is no longer an alert or a filter. Empty plan says "Set exercises". Profile is read-only (copy code stays; regenerate and the edit form are gone).
+
+### 2026-10-31 · Claude Code: strap figure mirror fix + waist analysis
+- `web/src/main.js`: in mirror mode (the default) the strap pose flipped x but still drove the patient's own arm bone,
+  so a side raise swept across the chest and the ROM arc sat on the other arm. It now moves to the other arm, like
+  `mirrorKeypoints`. Not checked live (needs a calibrated phone feed).
+- Open: the waist band's forward direction is never calibrated. `_M["trunk"]` assumes the pod on the front of the
+  belt, arrow up; the N-pose fixes only up and the raise fixes only the arms. The waist is now B4:7A (an arm board),
+  so trunk lean and chest tilt can come out sideways or reversed. Proposed: a short lean-forward calibration step.
+- `test_auri_cv::test_pipeline_reads_the_worker_skeleton_and_skips_depth_lift` and
+  `test_straps::test_straps_off_leaves_the_state_without_straps` fail since straps are always published (STATUS 115).
