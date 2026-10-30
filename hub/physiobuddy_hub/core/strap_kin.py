@@ -36,6 +36,7 @@ from .skeleton_kin import (
 SENSORS = ("upper_arm", "forearm", "trunk")
 WORLD_UP = np.array([0.0, 0.0, 1.0])          # gravity-aligned sensor world (BNO085 game rotation vector)
 DOWN = np.array([0.0, -1.0, 0.0])             # segment / thorax "down"
+MIN_LEAN_TILT = 0.2                            # sin of ~12 deg: below this the lean's direction is noise
 
 # Where each pod axis points on the body in the N-pose, in segment axes: (pod X, pod Y, pod Z). Pod Y = Z x X.
 _M = {
@@ -120,7 +121,8 @@ class StrapCalibration:
     side: str
     ref: dict                                  # sensor -> R(c), sensor -> its world, at the N-pose
     mount: dict                                # sensor -> A, segment -> sensor
-    forward_raise: dict = field(default_factory=dict)   # sensor -> True once the limb-axis rotation is fixed
+    # sensor -> True once its forward is fixed (arms: the raise; trunk: the lean)
+    forward_raise: dict = field(default_factory=dict)
 
     def gravity_offset_deg(self, sensor: str) -> Optional[float]:
         """How far gravity turned the nominal mount, in degrees. None when that strap was not in the N-pose."""
@@ -229,6 +231,38 @@ class StrapCalibration:
             self.forward_raise[name] = True
             done.append(name)
         return done
+
+    def refine_trunk_from_lean(self, samples: dict) -> bool:
+        """``samples``: sensor -> list of (quaternion, gyro or None) during a slow forward lean from the hips.
+
+        The N-pose sets only which way is up on the waist box. Worn on the back, the side or upside down, its
+        forward stays unknown and a forward lean reads as sideways or backward. The way the trunk tipped is
+        taken as forward.
+        """
+        rows = samples.get("trunk") or []
+        if "trunk" not in self.mount or self.forward_raise.get("trunk") or len(rows) < 8:
+            return False
+        headings = []
+        for quat, _gyro in rows:
+            Qt = self.segment("trunk", quat)
+            if Qt is None:
+                continue
+            top = Qt @ np.array([0.0, 1.0, 0.0])
+            flat = np.array([float(top[0]), 0.0, float(top[2])])
+            n = float(np.linalg.norm(flat))
+            if n > MIN_LEAN_TILT:
+                headings.append(flat / n)
+        if len(headings) < 8:
+            return False
+        mean = np.mean(headings, axis=0)
+        n = float(np.linalg.norm(mean))
+        if n < 0.5:
+            return False
+        mean /= n
+        az = float(np.arctan2(mean[2], mean[0]))
+        self.mount["trunk"] = self.mount["trunk"] @ axis_angle(np.array([0.0, 1.0, 0.0]), -az)
+        self.forward_raise["trunk"] = True
+        return True
 
     def segment(self, sensor: str, q) -> Optional[np.ndarray]:
         """Segment orientation in the body frame B (rotation, segment -> B)."""

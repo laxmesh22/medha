@@ -300,17 +300,18 @@ class CameraPipeline:
             tilt = self.strap_cal.gravity_offset_deg(name)
             slots.append({
                 "sensor": name,
-                "state": "raise" if raised else "npose",
+                "state": ("lean" if name == "trunk" else "raise") if raised else "npose",
                 "offset_deg": None if tilt is None else round(tilt, 2),
             })
         if self.strap_cal is None:
             return {"state": "none", "time": None, "sensors": [], "slots": slots}
-        raised = sorted(name for name, done in self.strap_cal.forward_raise.items() if done)
+        raised = sorted(name for name, done in self.strap_cal.forward_raise.items() if done and name != "trunk")
         return {
             "state": "npose+raise" if raised else "npose",
             "time": self._strap_cal_time,
             "sensors": sorted(self.strap_cal.ref),
             "forward_raise": raised,
+            "forward_lean": bool(self.strap_cal.forward_raise.get("trunk")),
             "slots": slots,
         }
 
@@ -348,6 +349,22 @@ class CameraPipeline:
         self._strap_cal_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         save_worn_mount(self.strap_cal, self._strap_cal_time)
         return {"ok": True, "refined": refined, "calibration": self.calibration_view()}
+
+    def finish_lean(self, samples: dict) -> dict:
+        self._sync_strap_cal()
+        if self.strap_cal is None:
+            return {"ok": False, "reason": "stand still in the N-pose first"}
+        if "trunk" not in self.strap_cal.ref:
+            return {"ok": False, "reason": "the waist strap was not in the N-pose"}
+        # A new lean replaces the old forward: undo the flag so the refine runs again on this mount.
+        had = self.strap_cal.forward_raise.pop("trunk", None)
+        if not self.strap_cal.refine_trunk_from_lean(samples):
+            if had:
+                self.strap_cal.forward_raise["trunk"] = had
+            return {"ok": False, "reason": "lean not seen; bend slowly forward from the hips"}
+        self._strap_cal_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        save_worn_mount(self.strap_cal, self._strap_cal_time)
+        return {"ok": True, "calibration": self.calibration_view()}
 
     def strap_status(self) -> Optional[dict]:
         # The phone feed is always there. Show its three slots even before the first sample,

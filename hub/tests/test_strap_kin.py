@@ -97,6 +97,36 @@ def test_raise_direction_sets_forward_when_the_box_is_twisted():
     assert b.movement == "abduction"
 
 
+def test_waist_lean_sets_forward_when_the_box_is_on_the_back_or_side():
+    """The N-pose cannot see which way the waist box faces. A forward lean read backward or sideways."""
+    from physiobuddy_hub.straps.calibrate import strap_pose
+
+    for spin_deg in (180.0, 90.0, -135.0):
+        spin = {"trunk": spin_deg}
+        cal = npose("right", spin, seed=6)
+        bow = axis_angle(EZ, np.radians(-20))                       # trunk tipped 20 deg forward
+        posed = wear({"trunk": bow, "upper_arm": bow, "forearm": bow}, "right", spin, seed=6)
+        before = StrapKinematics(cal).compute(posed)
+        assert abs(before.trunk_lean_sagittal.value - 20) > 10
+        rows = {s: [] for s in SENSORS}
+        for deg in range(4, 32, 2):
+            q = wear({s: axis_angle(EZ, np.radians(-deg)) for s in SENSORS}, "right", spin, seed=6)
+            for s in SENSORS:
+                rows[s].append((q[s].tolist(), None))
+        assert cal.refine_trunk_from_lean(rows) and cal.forward_raise["trunk"]
+        after = StrapKinematics(cal).compute(posed)
+        assert abs(after.trunk_lean_sagittal.value - 20) < 1 and abs(after.trunk_lean_lateral.value) < 1
+        snap = {"trunk": {"available": True, "quat": posed["trunk"].tolist()}}
+        assert strap_pose(cal, snap)["trunk"][2] > 0.3              # chest tips toward the camera
+
+
+def test_waist_lean_is_rejected_when_the_trunk_stays_upright():
+    cal = npose("right", seed=6)
+    still = wear({s: np.eye(3) for s in SENSORS}, "right", seed=6)
+    rows = {"trunk": [(still["trunk"].tolist(), None)] * 20}
+    assert not cal.refine_trunk_from_lean(rows) and "trunk" not in cal.forward_raise
+
+
 def test_worn_position_is_the_zero_and_can_be_saved():
     """However the box sits, the pose it was worn in is standing still."""
     spin = {"upper_arm": 35.0}

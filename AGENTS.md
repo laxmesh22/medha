@@ -233,8 +233,12 @@ Signup, emergency, attention page, static profile. Not committed, not deployed.
 - `web/src/main.js`: in mirror mode (the default) the strap pose flipped x but still drove the patient's own arm bone,
   so a side raise swept across the chest and the ROM arc sat on the other arm. It now moves to the other arm, like
   `mirrorKeypoints`. Not checked live (needs a calibrated phone feed).
-- Open: the waist band's forward direction is never calibrated. `_M["trunk"]` assumes the pod on the front of the
-  belt, arrow up; the N-pose fixes only up and the raise fixes only the arms. The waist is now B4:7A (an arm board),
-  so trunk lean and chest tilt can come out sideways or reversed. Proposed: a short lean-forward calibration step.
+- Waist forward was never calibrated: `_M["trunk"]` assumes the pod on the front of the belt, arrow up; the N-pose
+  fixes only up and the raise only the arms. The live station showed the waist 89 deg off that mount, so trunk lean
+  and chest tilt read sideways or reversed. New step: `StrapCalibration.refine_trunk_from_lean` (the way the trunk
+  tipped is forward), `POST /api/straps/calibrate/lean`, a "lean forward (waist)" button and a third guided step
+  when the waist was in the N-pose. Stored as `forward_raise["trunk"]`; the calibration view shows `forward_lean`
+  and slot state `lean`. Tests cover the box on the back, the side and 135 deg. Needs a hub restart, then guided
+  calibration again.
 - `test_auri_cv::test_pipeline_reads_the_worker_skeleton_and_skips_depth_lift` and
   `test_straps::test_straps_off_leaves_the_state_without_straps` fail since straps are always published (STATUS 115).

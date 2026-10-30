@@ -480,7 +480,8 @@ const STRAP_ROWS = [
   ['trunk_lean_sagittal', 'Trunk lean, front/back'],
   ['trunk_lean_lateral', 'Trunk lean, sideways'],
 ];
-const STRAP_CAL = { none: 'Not calibrated', npose: 'N-pose ok', raise: 'raise ok', 'npose+raise': 'N-pose and forward raise' };
+const STRAP_CAL = { none: 'Not calibrated', npose: 'N-pose ok', raise: 'raise ok', lean: 'lean ok', 'npose+raise': 'N-pose and forward raise' };
+const STRAP_BUTTONS = ['#straps-npose', '#straps-raise', '#straps-lean', '#straps-guided'];
 const STRAP_SLOT_LABEL = { upper_arm: 'Upper arm', forearm: 'Forearm', trunk: 'Waist' };
 
 function deg(m) {
@@ -540,7 +541,8 @@ function renderStraps(state) {
   const sensors = (cal.sensors || []).join(', ');
   const lan = (state.lan_ipv4 || []).filter((ip) => ip && !ip.startsWith('192.168.56.')).join(' or ');
   const where = lan ? `Phone sends to ${lan}` : '';
-  $('#straps-cal').textContent = [STRAP_CAL[cal.state] || cal.state, sensors, where].filter(Boolean).join(' · ');
+  const lean = cal.forward_lean ? 'waist lean' : '';
+  $('#straps-cal').textContent = [STRAP_CAL[cal.state] || cal.state, lean, sensors, where].filter(Boolean).join(' · ');
   const list = $('#straps-slots');
   list.innerHTML = '';
   const bySlot = {};
@@ -576,7 +578,7 @@ function renderStraps(state) {
 
 async function strapCalibrate(path, busy) {
   const msg = $('#straps-msg');
-  const buttons = ['#straps-npose', '#straps-raise', '#straps-guided'].map((id) => $(id));
+  const buttons = STRAP_BUTTONS.map((id) => $(id));
   buttons.forEach((b) => { b.disabled = true; });
   msg.hidden = false;
   msg.textContent = busy;
@@ -597,7 +599,7 @@ function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 async function guidedStraps() {
   const msg = $('#straps-msg');
-  const buttons = ['#straps-npose', '#straps-raise', '#straps-guided'].map((id) => $(id));
+  const buttons = STRAP_BUTTONS.map((id) => $(id));
   buttons.forEach((b) => { b.disabled = true; });
   msg.hidden = false;
   for (let i = 5; i >= 1; i -= 1) {
@@ -627,8 +629,30 @@ async function guidedStraps() {
   } catch {
     raise = { ok: false, reason: 'Could not reach the station' };
   }
+  if (!raise.ok) {
+    buttons.forEach((b) => { b.disabled = false; });
+    msg.textContent = raise.reason || 'Raise was not accepted';
+    return;
+  }
+  // The waist box's forward is only known once the trunk has tipped forward.
+  if (!(npose.calibration?.sensors || []).includes('trunk')) {
+    buttons.forEach((b) => { b.disabled = false; });
+    msg.textContent = 'N-pose ok, raise ok · no waist strap';
+    return;
+  }
+  for (let i = 5; i >= 1; i -= 1) {
+    msg.textContent = `Arms relaxed. Bend slowly forward from the hips, a small bow toward the camera. Starting in ${i}`;
+    await sleep(1000);
+  }
+  msg.textContent = 'Bend slowly forward toward the camera, then come back up…';
+  let lean;
+  try {
+    lean = await fetch('/api/straps/calibrate/lean', { method: 'POST' }).then((r) => r.json());
+  } catch {
+    lean = { ok: false, reason: 'Could not reach the station' };
+  }
   buttons.forEach((b) => { b.disabled = false; });
-  msg.textContent = raise.ok ? 'N-pose ok, raise ok' : (raise.reason || 'Raise was not accepted');
+  msg.textContent = lean.ok ? 'N-pose ok, raise ok, waist lean ok' : (lean.reason || 'Lean was not accepted');
 }
 
 // ---------------------------------------------------------------- controls
@@ -734,6 +758,7 @@ document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click
 
 $('#straps-npose').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/npose', 'Wear the sensors as they sit. Stand still, arms by your sides…'));
 $('#straps-raise').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/raise', 'Raise the straight arm forward, toward the camera. Not out to the side…'));
+$('#straps-lean').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/lean', 'Arms relaxed. Bend slowly forward from the hips toward the camera, then come back up…'));
 $('#straps-guided').addEventListener('click', () => guidedStraps());
 
 $('#rest-btn').addEventListener('click', async (e) => {
