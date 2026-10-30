@@ -57,6 +57,13 @@ def make_skeleton(right_u=(0, -1, 0), right_f=(0, -1, 0), left_u=(0, -1, 0), lef
 UP_CAM = np.array([0.0, -1.0, 0.0])
 
 
+@pytest.fixture(autouse=True)
+def scratch_worn_mount(tmp_path, monkeypatch):
+    """Tests never read or overwrite the station's saved strap position."""
+    from physiobuddy_hub.straps import calibrate
+    monkeypatch.setattr(calibrate, "MOUNT_FILE", tmp_path / "straps_mount.local.json")
+
+
 @pytest.fixture
 def up_cam():
     return UP_CAM.copy()

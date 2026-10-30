@@ -9,10 +9,13 @@ from typing import Optional
 
 import numpy as np
 
-from ..core.strap_kin import SENSORS, StrapCalibration, StrapKinematics
+from ..core.strap_kin import SENSORS, StrapCalibration, StrapKinematics, quat_to_matrix
 
 STILL_GYRO_RAD_S = 0.3
 MIN_NPOSES = 20
+# Placement check: a band on the moving segment turns well past MOVED_DEG; one elsewhere stays under STILL_DEG.
+MOVED_DEG = 25.0
+STILL_DEG = 8.0
 # The position the sensors were worn in. Git-ignored. Replaced only by a new calibration.
 MOUNT_FILE = Path(__file__).resolve().parents[2] / "straps_mount.local.json"
 
@@ -51,6 +54,45 @@ def judge_npose(samples: dict) -> dict:
     if not usable:
         return {"ok": False, "reason": f"fewer than {MIN_NPOSES} samples ({', '.join(short)})", "sensors": detail}
     return {"ok": True, "quats": {s: [q for q, _g in rows] for s, rows in usable.items()}, "sensors": detail}
+
+
+def turned_deg(rows) -> Optional[float]:
+    """How far a band turned during a capture: largest angle from its first sample. None without samples."""
+    mats = []
+    for quat, _gyro in rows or []:
+        try:
+            mats.append(quat_to_matrix(quat))
+        except ValueError:
+            continue
+    if not mats:
+        return None
+    first = mats[0]
+    worst = 0.0
+    for R in mats[1:]:
+        cosine = float(np.clip((np.trace(first.T @ R) - 1.0) / 2.0, -1.0, 1.0))
+        worst = max(worst, float(np.degrees(np.arccos(cosine))))
+    return worst
+
+
+def placement_problem(step: str, samples: dict) -> Optional[str]:
+    """Plain reason when the bands did not move the way this step asks, else None.
+
+    A raise turns the upper arm and the forearm together and leaves the waist still. A forward lean tips the waist.
+    A band that does neither is on another body part than its slot says, and its numbers would be reversed.
+    """
+    turned = {name: turned_deg(samples.get(name)) for name in SENSORS}
+    moved = {name: deg is not None and deg >= MOVED_DEG for name, deg in turned.items()}
+    still = {name: deg is not None and deg < STILL_DEG for name, deg in turned.items()}
+    if step == "raise":
+        if moved["trunk"] and (still["upper_arm"] or still["forearm"]):
+            return "the waist band moved during the arm raise. The waist and arm bands look swapped"
+        if moved["forearm"] and still["upper_arm"]:
+            return "the upper-arm band did not move with the forearm. Check it is on the upper arm of the raised arm"
+        if moved["upper_arm"] and still["forearm"]:
+            return "the forearm band did not move with the upper arm. Check it is on the forearm of the raised arm"
+    if step == "lean" and still["trunk"]:
+        return "the waist band did not tip. Check it is on the waist, not lying on the table"
+    return None
 
 
 def save_worn_mount(cal: StrapCalibration, when: str) -> None:
@@ -123,6 +165,8 @@ def strap_pose(cal: Optional[StrapCalibration], snap: dict):
         if n < 1e-6 or not np.all(np.isfinite(v)):
             return None
         v = v / n
+        # A rotation, not a mirror: body X (forward) -> +z toward the camera, body Z (right) -> -x.
+        # A forward raise that draws backward is an uncalibrated or misplaced band, not this mapping.
         return [round(float(-v[2]), 4), round(float(v[1]), 4), round(float(v[0]), 4)]
 
     pose = {"side": cal.side, "trunk": None, "upper_arm": None, "forearm": None}

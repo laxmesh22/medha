@@ -127,6 +127,25 @@ def test_waist_lean_is_rejected_when_the_trunk_stays_upright():
     assert not cal.refine_trunk_from_lean(rows) and "trunk" not in cal.forward_raise
 
 
+def test_calibration_says_when_a_band_is_on_the_wrong_body_part():
+    from physiobuddy_hub.straps.calibrate import placement_problem
+
+    def capture(moving):
+        rows = {s: [] for s in SENSORS}
+        for deg in range(0, 90, 5):
+            segs = {s: axis_angle(EZ, np.radians(deg if s in moving else 0)) for s in SENSORS}
+            q = wear(segs, "right", seed=1)
+            for s in SENSORS:
+                rows[s].append((q[s].tolist(), None))
+        return rows
+
+    assert placement_problem("raise", capture({"upper_arm", "forearm"})) is None
+    assert "upper-arm band" in placement_problem("raise", capture({"forearm"}))
+    assert "swapped" in placement_problem("raise", capture({"trunk", "forearm"}))
+    assert placement_problem("lean", capture({"trunk", "upper_arm", "forearm"})) is None
+    assert "waist band did not tip" in placement_problem("lean", capture({"upper_arm"}))
+
+
 def test_worn_position_is_the_zero_and_can_be_saved():
     """However the box sits, the pose it was worn in is standing still."""
     spin = {"upper_arm": 35.0}
@@ -154,6 +173,11 @@ def test_figure_stays_standing_and_a_forward_raise_points_at_the_camera():
     snap = {s: {"available": True, "quat": moved[s].tolist()} for s in ("upper_arm", "forearm")}
     pose = strap_pose(cal, snap)
     assert pose["trunk"] is None and pose["upper_arm"][2] > 0.9 and pose["upper_arm"][1] < 0.2
+    # A right side raise goes to the patient's right, display -x. Forward and right together keep it a rotation.
+    side = axis_angle([1.0, 0, 0], np.radians(-90))
+    moved = wear({"trunk": np.eye(3), "upper_arm": side, "forearm": side}, "right", seed=5)
+    snap = {s: {"available": True, "quat": moved[s].tolist()} for s in SENSORS}
+    assert strap_pose(cal, snap)["upper_arm"][0] < -0.9
 
 
 def test_missing_strap_means_unavailable_not_zero():

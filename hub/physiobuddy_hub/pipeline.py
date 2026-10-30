@@ -17,7 +17,9 @@ from .capture.lift import lift_pose
 from .core.coach import EXERCISES, Coach
 from .core.display_gate import LandmarkGate, close_hint
 from .core.pose_smooth import DisplayPose
-from .straps.calibrate import judge_npose, load_worn_mount, save_worn_mount, strap_frame, strap_pose
+from .straps.calibrate import (
+    judge_npose, load_worn_mount, placement_problem, save_worn_mount, strap_frame, strap_pose,
+)
 from .straps.phone_feed import PhoneStraps
 from .core.quality import SegmentTracker
 from .core.skeleton_kin import SkeletonKinematics
@@ -286,8 +288,10 @@ class CameraPipeline:
         if loaded is None:
             return
         self.strap_cal, self._strap_cal_time = loaded
-        src = self.strap_source() if hasattr(self, "phone") else None
-        self._strap_gen = None if src is None else getattr(src, "generation", None)
+        # The phone's generation stays 0. Leaving this unset made the first phone sample look like a new
+        # sensor and deleted the worn position.
+        phone = getattr(self, "phone", None)
+        self._strap_gen = getattr(phone, "generation", 0) if phone is not None else None
 
     def calibration_view(self) -> dict:
         self._sync_strap_cal()
@@ -334,6 +338,9 @@ class CameraPipeline:
         self._sync_strap_cal()
         if self.strap_cal is None:
             return {"ok": False, "reason": "stand still in the N-pose first", "refined": []}
+        problem = placement_problem("raise", samples)
+        if problem:
+            return {"ok": False, "reason": problem, "refined": []}
         before = set(self.strap_cal.forward_raise)
         # The way the arm actually moved sets forward. Gyro is only a fallback.
         self.strap_cal.refine_from_raise_direction(samples)
@@ -356,6 +363,9 @@ class CameraPipeline:
             return {"ok": False, "reason": "stand still in the N-pose first"}
         if "trunk" not in self.strap_cal.ref:
             return {"ok": False, "reason": "the waist strap was not in the N-pose"}
+        problem = placement_problem("lean", samples)
+        if problem:
+            return {"ok": False, "reason": problem}
         # A new lean replaces the old forward: undo the flag so the refine runs again on this mount.
         had = self.strap_cal.forward_raise.pop("trunk", None)
         if not self.strap_cal.refine_trunk_from_lean(samples):
