@@ -8,6 +8,7 @@ import { ATTRIBUTION, LAYER_PRESETS, RealAnatomy } from './anatomy.js';
 import { RomOverlay } from './rom.js';
 import { AngleChart, PALETTE, renderPhase, renderReps, VisionPanel } from './hud.js';
 import { VoiceAgent } from './voiceAgent.js';
+import { CalibrationOverlay } from './calibOverlay.js';
 import { fadeMaterial } from './tween.js';
 
 const GUIDANCE = {
@@ -40,6 +41,7 @@ const EXERCISE_ORDER = ['flexion', 'abduction', 'external_rotation'];
 
 const $ = (s) => document.querySelector(s);
 const stage = new Stage($('#scene'));
+const calib = new CalibrationOverlay({ modelUrl: () => (MODELS[$('#model').value] || MODELS.female).url, displayPose });
 const points = new SkeletonOverlay(stage.scene);
 const rom = new RomOverlay(stage.scene);
 const vision = new VisionPanel($('#vision'), $('#video'));
@@ -422,19 +424,24 @@ function render(state) {
   points.update(kp);
   const pose = state.strap_pose;
   if (avatar && pose && (pose.trunk || pose.upper_arm || pose.forearm)) {
-    // Mirror like the keypoints: reflect x and move the pose to the other arm.
-    const flip = (v) => (!v || !ui.mirror ? v : [-v[0], v[1], v[2]]);
-    const other = { right: 'left', left: 'right' };
-    avatar.solveStrap({
-      side: ui.mirror ? other[pose.side] ?? pose.side : pose.side,
-      trunk: flip(pose.trunk),
-      upper_arm: flip(pose.upper_arm),
-      forearm: flip(pose.forearm),
-    });
+    avatar.solveStrap(displayPose(pose));
   } else if (avatar && state.keypoints) {
     avatar.solve(kp);
   }
   if (anatomy && state.keypoints) anatomy.solve(kp);
+  calib.update(state);
+}
+
+// Strap pose for a figure on screen. Mirror like the keypoints: reflect x and move the pose to the other arm.
+function displayPose(pose) {
+  const flip = (v) => (!v || !ui.mirror ? v : [-v[0], v[1], v[2]]);
+  const other = { right: 'left', left: 'right' };
+  return {
+    side: ui.mirror ? other[pose.side] ?? pose.side : pose.side,
+    trunk: flip(pose.trunk),
+    upper_arm: flip(pose.upper_arm),
+    forearm: flip(pose.forearm),
+  };
 }
 
 // per frame: smooth both rigs, then ROM overlay + anatomy highlights from the avatar's bones
@@ -603,82 +610,44 @@ async function strapCalibrate(path, busy) {
 function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 async function guidedStraps() {
-  const msg = $('#straps-msg');
+  // Full-screen walkthrough: big text, countdown, a demo figure and the live "You" figure (calibOverlay.js).
   const buttons = STRAP_BUTTONS.map((id) => $(id));
   buttons.forEach((b) => { b.disabled = true; });
-  msg.hidden = false;
-  for (let i = 5; i >= 1; i -= 1) {
-    msg.textContent = `Wear the sensors as they sit. Stand still, arms by your sides. Locking that position in ${i}`;
-    await sleep(1000);
-  }
-  msg.textContent = 'Hold still…';
-  let npose;
-  try {
-    npose = await fetch('/api/straps/calibrate/npose', { method: 'POST' }).then((r) => r.json());
-  } catch {
-    npose = { ok: false, reason: 'Could not reach the station' };
-  }
-  if (!npose.ok) {
-    msg.textContent = npose.reason || 'N-pose was not accepted';
-    buttons.forEach((b) => { b.disabled = false; });
-    return;
-  }
-  for (let i = 5; i >= 1; i -= 1) {
-    msg.textContent = `Raise the straight arm forward, toward the camera, not out to the side. Starting in ${i}`;
-    await sleep(1000);
-  }
-  msg.textContent = 'Raise the straight arm slowly forward, toward the camera…';
-  let raise;
-  try {
-    raise = await fetch('/api/straps/calibrate/raise', { method: 'POST' }).then((r) => r.json());
-  } catch {
-    raise = { ok: false, reason: 'Could not reach the station' };
-  }
-  if (!raise.ok) {
-    buttons.forEach((b) => { b.disabled = false; });
-    msg.textContent = raise.reason || 'Raise was not accepted';
-    return;
-  }
+  await calib.open();
+  const run = async (step, path, countdown) => {
+    if (!(await calib.show(step, ui.side, countdown))) return null;    // closed during the countdown
+    let r;
+    try {
+      r = await fetch(path, { method: 'POST' }).then((x) => x.json());
+    } catch {
+      r = { ok: false, reason: 'Could not reach the station' };
+    }
+    if (!r.ok) calib.setResult(false, r.reason || 'Not accepted. Try again.');
+    return r;
+  };
+  const stop = () => { buttons.forEach((b) => { b.disabled = false; }); };
+  calib.retry = () => guidedStraps();
+
+  const npose = await run('npose', '/api/straps/calibrate/npose', 5);
+  if (!npose?.ok) return stop();
+  calib.setResult(true, `Rest position saved: ${(npose.calibration?.sensors || []).join(', ')}`);
+  const raise = await run('raise', '/api/straps/calibrate/raise', 5);
+  if (!raise?.ok) return stop();
   const fit = raise.forearm_fit_deg == null
-    ? 'forearm not matched to the arm (keep the elbow straight)'
-    : `forearm matched to the arm within ${raise.forearm_fit_deg}°`;
-  for (let i = 5; i >= 1; i -= 1) {
-    msg.textContent = `Arm back down. Now raise the straight arm out to the ${ui.side} side, level with the shoulder. Starting in ${i}`;
-    await sleep(1000);
+    ? 'Forearm not matched to the arm: keep the elbow straight next time'
+    : `Forearm matched to the arm within ${raise.forearm_fit_deg}°`;
+  calib.setResult(true, fit);
+  const side = await run('side', '/api/straps/calibrate/side', 5);
+  if (!side?.ok) return stop();
+  const sideFit = `Side raise ${side.side_error_deg}° from sideways`;
+  if ((npose.calibration?.sensors || []).includes('trunk')) {
+    const lean = await run('lean', '/api/straps/calibrate/lean', 5);
+    if (!lean?.ok) return stop();
   }
-  msg.textContent = `Raise the straight arm slowly out to the ${ui.side} side…`;
-  let sideRaise;
-  try {
-    sideRaise = await fetch('/api/straps/calibrate/side', { method: 'POST' }).then((r) => r.json());
-  } catch {
-    sideRaise = { ok: false, reason: 'Could not reach the station' };
-  }
-  if (!sideRaise.ok) {
-    buttons.forEach((b) => { b.disabled = false; });
-    msg.textContent = sideRaise.reason || 'Side raise was not accepted';
-    return;
-  }
-  const sideFit = `side raise ${sideRaise.side_error_deg}° from sideways`;
-  // The waist box's forward is only known once the trunk has tipped forward.
-  if (!(npose.calibration?.sensors || []).includes('trunk')) {
-    buttons.forEach((b) => { b.disabled = false; });
-    msg.textContent = `N-pose ok, raise ok, side ok · ${fit} · ${sideFit} · no waist strap`;
-    return;
-  }
-  for (let i = 5; i >= 1; i -= 1) {
-    msg.textContent = `Arms relaxed. Bend slowly forward from the hips, a small bow toward the camera. Starting in ${i}`;
-    await sleep(1000);
-  }
-  msg.textContent = 'Bend slowly forward toward the camera, then come back up…';
-  let lean;
-  try {
-    lean = await fetch('/api/straps/calibrate/lean', { method: 'POST' }).then((r) => r.json());
-  } catch {
-    lean = { ok: false, reason: 'Could not reach the station' };
-  }
-  buttons.forEach((b) => { b.disabled = false; });
-  msg.textContent = lean.ok ? `N-pose ok, raise ok, side ok, waist lean ok · ${fit} · ${sideFit}`
-    : (lean.reason || 'Lean was not accepted');
+  stop();
+  const waist = (npose.calibration?.sensors || []).includes('trunk') ? 'Waist set.' : 'No waist band: trunk lean stays unavailable.';
+  calib.finish(`${fit}. ${sideFit}. ${waist}`);
+  $('#straps-msg').hidden = true;
 }
 
 // ---------------------------------------------------------------- controls
@@ -781,6 +750,8 @@ $('#mic-btn').addEventListener('click', (e) => {
   e.currentTarget.setAttribute('aria-pressed', String(on));
 });
 document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click', () => agent.hear(b.dataset.ask)));
+$('#calib-retry').addEventListener('click', () => calib.retry?.());
+calib.onClose = () => STRAP_BUTTONS.forEach((id) => { $(id).disabled = false; });
 $('#ask-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const q = $('#ask-input').value.trim();

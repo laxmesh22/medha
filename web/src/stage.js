@@ -64,15 +64,21 @@ export class Stage {
     this.timer = new THREE.Timer();
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
-    this.renderer.setAnimationLoop((now) => {
+    this.loop = (now) => {
       this.timer.update(now);
       const dt = Math.min(this.timer.getDelta(), 0.1);
       for (const f of this.onFrame) f(dt);
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
       this.labels.render(this.scene, this.camera);
-    });
+    };
+    this.start();
   }
+
+  // A hidden stage (the calibration overlay when closed) should not draw.
+  start() { this.renderer.setAnimationLoop(this.loop); }
+
+  stop() { this.renderer.setAnimationLoop(null); }
 
   setFloorY(y) {
     this.floor.position.y = y;

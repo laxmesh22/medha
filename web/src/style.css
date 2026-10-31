@@ -417,3 +417,93 @@ details.fold .fold-body > .btn-quiet { margin-bottom: 10px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Guided strap calibration: full screen, large type for patients standing 2 m from the screen. */
+.calib {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr);
+  background: var(--page);
+}
+.calib[hidden], .calib [hidden] { display: none !important; }
+body.calib-open { overflow: hidden; }
+.calib-scene-wrap { position: relative; min-height: 0; }
+.calib-scene { position: absolute; inset: 0; }
+.calib-tags {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 20px;
+  display: flex;
+  justify-content: space-around;
+  pointer-events: none;
+}
+.calib-tags span {
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 600;
+}
+.calib-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 48px 40px;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+}
+.calib-step { margin: 0; color: var(--ink-2); font-size: 20px; font-weight: 600; letter-spacing: 0.02em; }
+.calib-title { margin: 0; color: var(--teal); font-size: 44px; line-height: 1.1; }
+.calib-text { margin: 0; color: var(--ink); font-size: 26px; line-height: 1.4; }
+.calib-count {
+  font-size: 120px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--teal);
+  font-variant-numeric: tabular-nums;
+}
+.calib-still {
+  margin: 0;
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  color: var(--warning-ink);
+  font-size: 26px;
+  font-weight: 600;
+}
+.calib-result {
+  margin: 0;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  font-size: 24px;
+  line-height: 1.35;
+}
+.calib-result[data-ok='yes'] { background: var(--good-soft); color: var(--good-ink); }
+.calib-result[data-ok='no'] { background: var(--critical-soft); color: var(--critical-ink); }
+.calib-actions { display: flex; gap: 12px; }
+.calib-btn {
+  min-height: 64px;
+  padding: 0 28px;
+  border-radius: var(--radius);
+  border: 2px solid var(--teal);
+  background: var(--surface);
+  color: var(--teal);
+  font-size: 24px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.calib-btn.primary { background: var(--teal); color: var(--on-teal); }
+#calib-close { margin-top: auto; }
+@media (max-width: 860px) {
+  .calib { grid-template-columns: 1fr; grid-template-rows: 45vh 1fr; }
+  .calib-panel { border-left: 0; border-top: 1px solid var(--line); padding: 24px 20px; }
+  .calib-title { font-size: 34px; }
+  .calib-text { font-size: 22px; }
+  .calib-count { font-size: 84px; }
+}

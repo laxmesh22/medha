@@ -239,6 +239,25 @@
         <button type="button" id="summary-new" class="toggle">New session</button>
       </div>
     </aside>
+    <!-- Guided strap calibration, full screen (calibOverlay.js) -->
+    <section id="calib" class="calib" role="dialog" aria-modal="true" aria-labelledby="calib-title" hidden>
+      <div class="calib-scene-wrap">
+        <div id="calib-scene" class="calib-scene"></div>
+        <div class="calib-tags"><span>Do this</span><span>You</span></div>
+      </div>
+      <div class="calib-panel">
+        <p id="calib-step" class="calib-step">Step 1 of 4</p>
+        <h2 id="calib-title" class="calib-title">Stand still</h2>
+        <p id="calib-text" class="calib-text"></p>
+        <div id="calib-count" class="calib-count" aria-live="polite">5</div>
+        <p id="calib-still" class="calib-still" hidden>You are moving. Hold still.</p>
+        <p id="calib-result" class="calib-result" aria-live="polite" hidden></p>
+        <div id="calib-actions" class="calib-actions" hidden>
+          <button type="button" id="calib-retry" class="calib-btn primary">Try again</button>
+        </div>
+        <button type="button" id="calib-close" class="calib-btn">Close</button>
+      </div>
+    </section>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
