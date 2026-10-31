@@ -243,7 +243,10 @@ $$;
 
 create or replace function public.is_linked_clinician(p uuid) returns boolean
 language sql stable security definer set search_path = public as $$
-  select exists (select 1 from care_links where patient_id = p and clinician_id = my_clinician_id() and status = 'active')
+  select exists (
+    select 1 from care_links l join clinicians c on c.id = l.clinician_id
+    where l.patient_id = p and l.clinician_id = my_clinician_id() and l.status = 'active'
+      and c.verification_status = 'verified')
 $$;
 
 -- 8-character referral code without look-alike characters (no 0/O, 1/I/L)
@@ -296,16 +299,19 @@ begin
 end $$;
 
 -- Patient app: link the signed-in patient to the clinician who owns the code (the patient consents by calling it).
+-- Only verified doctors (20261031b_verified_doctors_only).
 create or replace function public.link_patient_with_code(p_code text) returns uuid
 language plpgsql security definer set search_path = public as $$
 declare
   c uuid;
+  v_status text;
   me uuid := my_patient_id();
 begin
   if current_sub() is null then raise exception 'not signed in'; end if;
   if me is null then raise exception 'create the patient profile first'; end if;
-  select id into c from clinicians where referral_code = upper(trim(p_code));
+  select id, verification_status into c, v_status from clinicians where referral_code = upper(trim(p_code));
   if c is null then raise exception 'unknown code'; end if;
+  if v_status <> 'verified' then raise exception 'clinician not verified'; end if;
   insert into care_links (patient_id, clinician_id, status, consent_at)
   values (me, c, 'active', now())
   on conflict (patient_id, clinician_id) do update set status = 'active', consent_at = now();
@@ -316,14 +322,20 @@ end $$;
 create or replace function public.preview_clinician_by_code(code text)
 returns table (full_name text, title text, clinic text, city text)
 language plpgsql stable security definer set search_path = public as $$
+declare
+  v_status text;
 begin
   if public.current_sub() is null then
     raise exception 'not signed in';
   end if;
+  select c.verification_status into v_status from public.clinicians c where c.referral_code = upper(trim(code));
+  if v_status is not null and v_status <> 'verified' then
+    raise exception 'clinician not verified';
+  end if;
   return query
     select c.full_name, c.title, c.clinic, c.city
     from public.clinicians c
-    where c.referral_code = upper(trim(code));
+    where c.referral_code = upper(trim(code)) and c.verification_status = 'verified';
 end $$;
 
 -- Clinician: publish a new care-plan version (items as JSON) and supersede the previous one, atomically.
