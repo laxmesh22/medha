@@ -251,3 +251,12 @@ Signup, emergency, attention page, static profile. Not committed, not deployed.
   FE:FD forearm, AB:6E upper arm; installed. Old calibration is invalid after the swap: run guided calibration.
 - `test_auri_cv::test_pipeline_reads_the_worker_skeleton_and_skips_depth_lift` and
   `test_straps::test_straps_off_leaves_the_state_without_straps` fail since straps are always published (STATUS 115).
+
+### 2026-10-31 06:00 · Claude Code: voice coach on camera + bands
+- `core/fusion.py`: camera is the measurement, bands the check; >20 deg disagreement is not counted (never averaged).
+  Band-only counting (`--strap-coach` or the Straps-card switch) is off by default: not validated yet.
+  Bands add ELBOW_BENT (straight-arm raises) and waist trunk lean.
+- `coach_llm.py`: free questions go to Claude if a Claude credential exists, else DeepSeek; Sarvam TTS for the voice.
+  Keys: environment or git-ignored `hub/llm_keys.local.json`. Never commit keys. Tests isolate both key and mount files.
+- Fixed: `.metric` comparison rows threw every frame and froze the 3D figure whenever the camera saw the patient.
+- Strap calibration: side-raise step, forearm matched to the upper arm, reboot re-anchoring (see `docs/STRAP_CALIBRATION.md`).
