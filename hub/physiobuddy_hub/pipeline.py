@@ -16,6 +16,7 @@ from . import __version__
 from .capture.lift import lift_pose
 from .core.coach import EXERCISES, Coach
 from .core.display_gate import LandmarkGate, close_hint
+from .core.fusion import fuse
 from .core.pose_smooth import DisplayPose
 from .straps.calibrate import (
     judge_npose, load_worn_mount, placement_problem, save_worn_mount, strap_frame, strap_pose,
@@ -94,7 +95,7 @@ class CameraPipeline:
     def __init__(self, source, pose_estimator, up_cam: np.ndarray, side: str = "right",
                  min_score: float = 0.4, log_dir: Optional[Path] = None, debug_video: bool = False,
                  meta: Optional[dict] = None, motionnet=None, straps=None,
-                 pose_smoothing: str = "light"):
+                 pose_smoothing: str = "light", strap_coach: bool = False):
         """``motionnet``: a ``MotionNetRunner`` (hybrid judging) or None for rules-only coaching."""
         self.source = source
         self.pose = pose_estimator
@@ -115,7 +116,10 @@ class CameraPipeline:
         self.coach = Coach("flexion")
         self.recorder = None  # set by --dataset-dir; never the training folder by default
         self.nn = motionnet if motionnet is not None and motionnet.available else None
-        self.straps = straps  # StrapLink, or None when --straps off. Not used by the coach.
+        self.straps = straps  # StrapLink, or None when --straps off
+        # Count from the straps when the camera cannot see the arm. Not validated: an operator choice, off by default.
+        self.strap_coach = bool(strap_coach)
+        self._measure = {"source": None, "disagree_deg": None, "strap_flags": []}
         self.phone = PhoneStraps()  # samples the phone forwards; the phone holds Bluetooth
         self.strap_cal = None
         self._strap_cal_time = None
@@ -190,6 +194,11 @@ class CameraPipeline:
         with self._lock:
             self.coach.set_paused(paused)
             return self.coach.snapshot()
+
+    def set_strap_coach(self, enabled: bool) -> bool:
+        with self._lock:
+            self.strap_coach = bool(enabled)
+            return self.strap_coach
 
     # -- guided dataset recording ------------------------------------------------------------------
     def record_start(self, subject_id: str, side: str, consent: bool, protocol: str = "full") -> dict:
@@ -493,7 +502,9 @@ class CameraPipeline:
             nn_out = None if self.nn is None else self.nn.push(sk, angles_d, side, self.up_cam,
                                                                kin.shrug_baseline, imu=imu_block)
             self._autodetect_step(t_s, nn_out)
-            coach_state = self.coach.update(t_s, angles_d, nn=nn_out)
+            judged, self._measure = fuse(angles_d, strap_angles, self.coach.ex.id, self.coach.ex.metric,
+                                         self.strap_coach)
+            coach_state = self.coach.update(t_s, judged, nn=nn_out)
             if self.recorder is None:
                 recorder_state = recording_off_status()
             else:
@@ -554,6 +565,7 @@ class CameraPipeline:
             "close_hint": close_hint(raw_2d, score_row),
             "image_aspect": round(frame.intrinsics.width / frame.intrinsics.height, 4),
             "strap_pose": pose,
+            "measure": {**self._measure, "strap_coach": self.strap_coach},
         }
         engine = getattr(self.source, "engine_view", None)
         if engine is not None:

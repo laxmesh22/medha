@@ -34,11 +34,11 @@ class ExerciseDef:
 EXERCISES = {
     "flexion": ExerciseDef(
         "flexion", "Forward elevation (flexion)", "elevation", 120.0, 5.0, "flexion", 25.0, 30.0,
-        ("TRUNK_LEAN_SAGITTAL", "APPARENT_TRUE_GAP", "SHRUG"),
+        ("TRUNK_LEAN_SAGITTAL", "APPARENT_TRUE_GAP", "SHRUG", "ELBOW_BENT"),
         "Raise the arm forward, thumb up, as far as comfortable. Stretch to tension, not pain."),
     "abduction": ExerciseDef(
         "abduction", "Side elevation (abduction)", "elevation", 110.0, 5.0, "abduction", 25.0, 30.0,
-        ("TRUNK_LEAN_LATERAL", "APPARENT_TRUE_GAP", "SHRUG"),
+        ("TRUNK_LEAN_LATERAL", "APPARENT_TRUE_GAP", "SHRUG", "ELBOW_BENT"),
         "Raise the arm out to the side, palm forward. Keep the trunk upright."),
     "external_rotation": ExerciseDef(
         "external_rotation", "External rotation (elbow at side)", "rotation", 45.0, 5.0, None, 10.0, 15.0,
@@ -69,6 +69,7 @@ CUE_TEXT = {
     "APPARENT_TRUE_GAP": "Body lean is adding fake range. Move from the shoulder.",
     "SHRUG": "Relax your shoulder down: avoid shrugging.",
     "ELBOW_DRIFT": "Keep your elbow tucked at your side.",
+    "ELBOW_BENT": "Keep your elbow straight.",
     "WRONG_MOVEMENT": "That looks like {seen}. This exercise is {expected}.",
 }
 
@@ -80,6 +81,7 @@ ISSUE_TEXT = {
     "APPARENT_TRUE_GAP": "body lean added fake range",
     "SHRUG": "your shoulder shrugged up",
     "ELBOW_DRIFT": "your elbow moved away from your side",
+    "ELBOW_BENT": "your elbow bent",
     "TRUNK_LEAN": "your trunk leaned",
     "TOO_FAST": "the movement was too fast",
 }

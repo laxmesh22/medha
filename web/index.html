@@ -124,6 +124,10 @@
               <button data-ask="what muscles are working">Muscles?</button>
               <button data-ask="next exercise">Next exercise</button>
             </div>
+            <form id="ask-form" class="asks">
+              <input id="ask-input" type="text" placeholder="Type a question for the coach" aria-label="Question for the coach" />
+              <button type="submit">Ask</button>
+            </form>
           </details>
         </section>
 
@@ -140,6 +144,7 @@
               <button type="button" id="straps-lean" class="btn-quiet">Calibrate: lean forward (waist)</button>
             </div>
             <p id="straps-msg" class="rec-note" hidden></p>
+            <label class="rec-note"><input type="checkbox" id="strap-coach" /> Count reps from the bands when the camera can't see the arm (not validated yet)</label>
             <dl id="straps-compare"></dl>
           </div>
         </details>

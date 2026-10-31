@@ -28,6 +28,9 @@ export class VoiceAgent {
     this.speaking = false;
     this.rec = null;
     this.micSupported = !!Recognition && (window.isSecureContext || location.hostname === 'localhost');
+    this.serverVoice = false;
+    this.audio = null;
+    fetch('/api/agent/status').then((r) => r.json()).then((s) => { this.serverVoice = s.voice === 'sarvam'; }).catch(() => {});
   }
 
   // ------------------------------------------------------------------ output
@@ -37,9 +40,52 @@ export class VoiceAgent {
     this.lastSpoken[key] = now;
     this.lastSaid = text;
     this.log('agent', text, kind);
-    if (!this.voiceOn || !('speechSynthesis' in window)) return;
+    if (!this.voiceOn) return;
     if (this.speaking && priority < 2) return; // don't talk over a correction with chatter
-    window.speechSynthesis.cancel();
+    this.stopSpeaking();
+    if (this.serverVoice) { this.playServer(text); return; }
+    this.browserSay(text);
+  }
+
+  stopSpeaking() {
+    this.sayToken = (this.sayToken || 0) + 1;
+    window.speechSynthesis?.cancel();
+    if (this.audio) { this.audio.pause(); this.audio = null; }
+  }
+
+  // Sarvam voice from the station (Indian English); the browser voice if it fails.
+  async playServer(text) {
+    const token = this.sayToken;
+    this.speaking = true;
+    this.pauseListening();
+    this.onState('speaking');
+    try {
+      const r = await fetch('/api/agent/speak', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }),
+      });
+      if (!r.ok) throw new Error(`speak ${r.status}`);
+      const url = URL.createObjectURL(await r.blob());
+      if (token !== this.sayToken) { URL.revokeObjectURL(url); return; }
+      const a = new Audio(url);
+      this.audio = a;
+      const done = () => {
+        URL.revokeObjectURL(url);
+        if (token !== this.sayToken) return;
+        this.audio = null;
+        this.speaking = false;
+        this.resumeListening();
+        this.onState(this.micOn ? 'listening' : 'idle');
+      };
+      a.onended = done;
+      a.onerror = done;
+      await a.play();
+    } catch {
+      if (token === this.sayToken) { this.speaking = false; this.browserSay(text); }
+    }
+  }
+
+  browserSay(text) {
+    if (!('speechSynthesis' in window)) return;
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 1.0;
     u.lang = 'en-IN';
@@ -50,7 +96,7 @@ export class VoiceAgent {
 
   setVoice(on) {
     this.voiceOn = on;
-    if (!on) window.speechSynthesis?.cancel();
+    if (!on) this.stopSpeaking();
     else this.say('Voice coach on. I will tell you when a movement is right, and what to fix when it is not.', { priority: 2 });
   }
 
@@ -67,6 +113,17 @@ export class VoiceAgent {
       return;
     }
     if (this.paused) return;
+    // Say when the measurement moves between the camera and the worn bands.
+    const src = state.measure?.source ?? null;
+    if (this.prevSource !== undefined && src !== this.prevSource) {
+      if (src === 'straps') this.say("I can't see your arm on the camera, so I am measuring with your bands.", { priority: 2, key: 'source', minGapS: 8 });
+      else if (src === 'camera' && this.prevSource === 'straps') this.say('I can see you on the camera again.', { key: 'source', minGapS: 8 });
+    }
+    this.prevSource = src;
+    // Camera and bands disagree: the rep is not counted, ask for a slower repeat (never average the two).
+    if (c.cue?.code === 'LOW_QUALITY' && /disagree/.test(c.cue.text)) {
+      this.say('The camera and your bands disagree. Please repeat that movement slowly.', { priority: 2, key: 'disagree', minGapS: 10, kind: 'warn' });
+    }
     for (const ev of c.events || []) {
       const k = `${ev.code}|${ev.text}`;
       if (this.seen.has(k)) continue;
@@ -188,6 +245,21 @@ export class VoiceAgent {
       return;
     }
     if (/(repeat|again|what did you say|sorry)/.test(t)) { this.say(this.lastSaid || 'Nothing to repeat yet.', { priority: 2 }); return; }
-    this.say('I can help with this exercise. Ask how many reps, how am I doing, my best, or say next exercise. For medical questions, please ask your physiotherapist.', { priority: 2 });
+    this.askClaude(text, ctx);
+  }
+
+  // Anything the fixed answers don't cover goes to Claude on the station, which sees only the measured session.
+  // Safety (pain, stop, pause) is handled above and never reaches it.
+  async askClaude(text, ctx) {
+    const fallback = 'I can help with this exercise. Ask how many reps, how am I doing, my best, or say next exercise. For medical questions, please ask your physiotherapist.';
+    try {
+      const r = await fetch('/api/agent/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: text, explain: ctx.explain || null }),
+      }).then((x) => x.json());
+      if (r.ok && r.text) { this.say(r.text, { priority: 2 }); return; }
+    } catch { /* station unreachable: fixed answer */ }
+    this.say(fallback, { priority: 2 });
   }
 }

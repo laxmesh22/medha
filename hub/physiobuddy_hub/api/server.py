@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import __version__
+from ..coach_llm import CoachLLM, SarvamVoice, session_context
 from ..pipeline import RecordingOff
 from ..straps.calibrate import collect_samples
 
@@ -38,6 +39,16 @@ class PauseBody(BaseModel):
 
 class AutodetectBody(BaseModel):
     enabled: bool
+
+
+class AskBody(BaseModel):
+    question: str
+    explain: Optional[dict] = None   # muscles working/stretching, from the page's anatomy view
+
+
+class SpeakBody(BaseModel):
+    text: str
+    language: str = "en-IN"
 
 
 class RecordStartBody(BaseModel):
@@ -124,6 +135,31 @@ def create_app(pipeline, status: dict) -> FastAPI:
         """Safety pause (pain / "stop"): no rep can be counted until resumed."""
         coach = pipeline.set_paused(body.paused)
         return {"ok": True, "paused": coach["user_paused"]}
+
+    @app.post("/api/strap-coach")
+    def strap_coach(body: AutodetectBody):
+        return {"ok": True, "enabled": pipeline.set_strap_coach(body.enabled)}
+
+    llm = CoachLLM()
+    voice = SarvamVoice()
+
+    @app.get("/api/agent/status")
+    def agent_status():
+        return {"llm": llm.available, "provider": llm.provider, "model": llm.model, "reason": llm.reason,
+                "voice": "sarvam" if voice.available else "browser"}
+
+    @app.post("/api/agent/speak")
+    def agent_speak(body: SpeakBody):
+        audio = voice.speak(body.text, body.language)
+        if audio is None:
+            return JSONResponse({"ok": False, "reason": "server voice unavailable"}, status_code=503)
+        return Response(audio, media_type="audio/mpeg")
+
+    @app.post("/api/agent/ask")
+    def agent_ask(body: AskBody):
+        # Sync on purpose: FastAPI runs it in a worker thread, so the camera loop is not blocked.
+        _version, state = pipeline.latest_state()
+        return llm.ask(body.question, session_context(state, body.explain))
 
     @app.post("/api/autodetect")
     def autodetect(body: AutodetectBody):

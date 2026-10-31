@@ -25,6 +25,8 @@ camera = [
 ]
 dev = ["pytest>=8", "httpx>=0.27"]
 straps = ["bleak>=0.22"]
+# Voice coach: answers (Claude, else DeepSeek) and Sarvam voice. Optional: without them the coach keeps fixed answers.
+agent = ["anthropic>=2.3", "httpx>=0.27", "truststore>=0.10"]
 
 [project.scripts]
 physiobuddy-hub = "physiobuddy_hub.__main__:main"

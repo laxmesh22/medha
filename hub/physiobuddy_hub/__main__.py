@@ -145,7 +145,7 @@ def _cmd_run(args) -> None:
         log_dir=log_dir, debug_video=args.debug_video,
         meta={"session": session_id, "pose_model": pose.name, "side": args.side},
         motionnet=motionnet, straps=_strap_link(args.straps, _merged_slots(args.strap_slot)),
-        pose_smoothing=args.pose_smoothing,
+        pose_smoothing=args.pose_smoothing, strap_coach=args.strap_coach,
     )
     if args.dataset_dir:
         from .recorder import DatasetRecorder
@@ -197,6 +197,9 @@ def main(argv=None) -> None:
                    help="PB-MotionNet model dir (default hub/models/motionnet; 'off' = rules only)")
     r.add_argument("--pose-smoothing", choices=["off", "light", "normal"], default="light",
                    help="on-screen skeleton only. Angles stay on the measured pose. Default light")
+    r.add_argument("--strap-coach", action="store_true",
+                   help="count reps from the calibrated straps when the camera cannot see the arm "
+                        "(not validated yet; also switchable on the station page)")
     r.add_argument("--straps", default="off",
                    help="off | auto | BLE address[,address]. Default off, so --sim and CI do not open BLE")
     r.add_argument("--strap-slot", default="",

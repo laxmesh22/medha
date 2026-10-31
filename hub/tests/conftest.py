@@ -60,8 +60,13 @@ UP_CAM = np.array([0.0, -1.0, 0.0])
 @pytest.fixture(autouse=True)
 def scratch_worn_mount(tmp_path, monkeypatch):
     """Tests never read or overwrite the station's saved strap position."""
+    from physiobuddy_hub import coach_llm
     from physiobuddy_hub.straps import calibrate
     monkeypatch.setattr(calibrate, "MOUNT_FILE", tmp_path / "straps_mount.local.json")
+    # ... nor the station's API keys: no test may call a paid service.
+    monkeypatch.setattr(coach_llm, "KEYS_FILE", tmp_path / "llm_keys.local.json")
+    for env in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "DEEPSEEK_API_KEY", "SARVAM_API_KEY"):
+        monkeypatch.delenv(env, raising=False)
 
 
 @pytest.fixture

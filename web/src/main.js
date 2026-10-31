@@ -397,7 +397,9 @@ function render(state) {
   chart.push(c);
 
   if (a) {
-    document.querySelectorAll('.metric').forEach((card) => setMetric(card, a[card.dataset.key]));
+    // Only the angle cards. The camera/strap comparison rows reuse the class, have no .val, and threw here,
+    // which stopped the rest of the frame (3D figure included) whenever the camera saw the patient.
+    document.querySelectorAll('.metric[data-key]').forEach((card) => setMetric(card, a[card.dataset.key]));
     const box = $('#flags');
     box.innerHTML = '';
     for (const f of a.flags) {
@@ -541,6 +543,8 @@ function renderStraps(state) {
   const sensors = (cal.sensors || []).join(', ');
   const lan = (state.lan_ipv4 || []).filter((ip) => ip && !ip.startsWith('192.168.56.')).join(' or ');
   const where = lan ? `Phone sends to ${lan}` : '';
+  const toggle = $('#strap-coach');
+  if (document.activeElement !== toggle) toggle.checked = !!state.measure?.strap_coach;
   const lean = cal.forward_lean ? 'waist lean' : '';
   const side = (cal.side_raise || []).length ? 'side raise' : '';
   $('#straps-cal').textContent = [STRAP_CAL[cal.state] || cal.state, side, lean, sensors, where].filter(Boolean).join(' · ');
@@ -777,6 +781,13 @@ $('#mic-btn').addEventListener('click', (e) => {
   e.currentTarget.setAttribute('aria-pressed', String(on));
 });
 document.querySelectorAll('[data-ask]').forEach((b) => b.addEventListener('click', () => agent.hear(b.dataset.ask)));
+$('#ask-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = $('#ask-input').value.trim();
+  if (q) agent.hear(q);
+  $('#ask-input').value = '';
+});
+$('#strap-coach').addEventListener('change', (e) => api('/api/strap-coach', { enabled: e.target.checked }));
 
 $('#straps-npose').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/npose', 'Wear the sensors as they sit. Stand still, arms by your sides…'));
 $('#straps-raise').addEventListener('click', () => strapCalibrate('/api/straps/calibrate/raise', 'Raise the straight arm forward, toward the camera. Not out to the side…'));
