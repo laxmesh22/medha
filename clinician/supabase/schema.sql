@@ -372,7 +372,8 @@ create policy "clinician updates own" on public.clinicians for update using (aut
   with check (auth_sub = current_sub());
 drop policy if exists "patient reads linked clinician" on public.clinicians;
 create policy "patient reads linked clinician" on public.clinicians for select using (
-  exists (select 1 from care_links l where l.clinician_id = clinicians.id and l.patient_id = my_patient_id()));
+  exists (select 1 from care_links l
+          where l.clinician_id = clinicians.id and l.patient_id = my_patient_id() and l.status = 'active'));
 
 drop policy if exists "patient owns profile" on public.patients;
 create policy "patient owns profile" on public.patients for all using (auth_sub = current_sub())
@@ -384,11 +385,12 @@ drop policy if exists "link parties read" on public.care_links;
 create policy "link parties read" on public.care_links for select
   using (patient_id = my_patient_id() or clinician_id = my_clinician_id());
 drop policy if exists "clinician ends link" on public.care_links;
+-- Either side can only END a link; re-activating needs the patient's code again (20261031_link_consent_hardening).
 create policy "clinician ends link" on public.care_links for update using (clinician_id = my_clinician_id())
-  with check (clinician_id = my_clinician_id());
+  with check (clinician_id = my_clinician_id() and status = 'ended');
 drop policy if exists "patient ends link" on public.care_links;
 create policy "patient ends link" on public.care_links for update using (patient_id = my_patient_id())
-  with check (patient_id = my_patient_id());
+  with check (patient_id = my_patient_id() and status = 'ended');
 
 drop policy if exists "library readable" on public.exercises;
 create policy "library readable" on public.exercises for select using (auth.role() = 'authenticated');
@@ -466,6 +468,13 @@ revoke all on table public.patient_settings from public, anon;
 grant select, insert on table public.patient_intake to authenticated;
 grant select, insert on table public.patient_consents to authenticated;
 grant select, insert, update on table public.patient_settings to authenticated;
+
+-- Links change only their status; clinicians cannot verify themselves or pick a referral code.
+revoke update on table public.care_links from authenticated;
+grant update (status) on table public.care_links to authenticated;
+revoke update on table public.clinicians from authenticated;
+grant update (full_name, title, specialization, clinic, city, council, registration_no, years_experience, phone)
+  on table public.clinicians to authenticated;
 
 -- ------------------------------------------------------------------------------------------- library seed
 insert into public.exercises (id, name, metric, description, default_sets, default_reps, default_hold) values
